@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { FileInput } from "@/components/forms/file-input";
 import { TermsDialog } from "@/components/forms/terms-dialog";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,8 @@ export function CustomerRegistrationForm({ adminMode = false, onCreated }: { adm
       termsAccepted: undefined,
     },
   });
+
+  const termsAccepted = useWatch({ control: form.control, name: "termsAccepted" });
 
   async function onSubmit(values: Values) {
     setServerError("");
@@ -164,7 +166,7 @@ export function CustomerRegistrationForm({ adminMode = false, onCreated }: { adm
       <TermsDialog
         open={termsOpen}
         title="Terms & Conditions"
-        checked={form.watch("termsAccepted") === true}
+        checked={termsAccepted === true}
         onCheckedChange={(checked) => form.setValue("termsAccepted", checked, {
           shouldDirty: true,
           shouldTouch: true,

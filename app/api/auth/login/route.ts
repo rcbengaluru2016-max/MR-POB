@@ -115,6 +115,10 @@ export async function POST(request: Request) {
   return NextResponse.json({
     user: sessionUser,
     redirectTo:
-      account.userType === "admin" ? "/admin" : "/portal",
+      account.userType === "admin"
+        ? "/admin"
+        : account.userType === "company"
+          ? "/company/dashboard"
+          : "/portal",
   });
 }

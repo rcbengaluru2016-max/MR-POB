@@ -12,7 +12,7 @@ export function MasterModule({
   kind,
   title,
 }: {
-  kind: "customer" | "mr" | "patient";
+  kind: "customer" | "company" | "patient";
   title: string;
 }) {
   const [items, setItems] = useState<MasterRecord[]>([]);
@@ -66,7 +66,8 @@ export function MasterModule({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Unable to save master record.");
-      await load();
+      const nextItems = await load();
+      setSelected(nextItems.find((item) => item.code === selected.code) ?? null);
     } catch (item) {
       setError(item instanceof Error ? item.message : "Unable to save master record.");
     }
@@ -108,8 +109,8 @@ export function MasterModule({
               <span className="text-sm text-muted">
                 {item.kind === "customer"
                   ? item.customerName
-                  : item.kind === "mr"
-                    ? item.mrName
+                  : item.kind === "company"
+                    ? item.companyName
                     : item.patientName}
               </span>
             </button>
@@ -128,7 +129,7 @@ export function MasterModule({
             <StatusBadge value={selected.status} />
           </div>
           <p className="text-sm text-muted">
-            Auto-populated from registration {selected.registrationId}. Backend staff should edit ERP fields only.
+            Details from approved registration {selected.registrationId}.
           </p>
           <dl className="grid gap-3 sm:grid-cols-2">
             {Object.entries(selected)
@@ -141,10 +142,22 @@ export function MasterModule({
               ))}
           </dl>
 
+          {selected.kind === "company" ? (
+            <section className="grid gap-4 border-t border-line pt-4 sm:grid-cols-2">
+              <h3 className="sm:col-span-2 font-semibold text-foreground">Company Details</h3>
+              <Field label="Company Name"><TextInput value={selected.companyName} onChange={(event) => setSelected({ ...selected, companyName: event.target.value })} /></Field>
+              <Field label="Division"><TextInput value={selected.division} onChange={(event) => setSelected({ ...selected, division: event.target.value })} /></Field>
+              <Field label="Headquarter"><TextInput value={selected.headquarter} onChange={(event) => setSelected({ ...selected, headquarter: event.target.value })} /></Field>
+              <Field label="Admin Full Name"><TextInput value={selected.adminFullName} onChange={(event) => setSelected({ ...selected, adminFullName: event.target.value })} /></Field>
+              <Field label="Admin Email Address"><TextInput type="email" value={selected.email} onChange={(event) => setSelected({ ...selected, email: event.target.value })} /></Field>
+              <Field label="Admin Mobile Number"><TextInput inputMode="numeric" value={selected.mobile} onChange={(event) => setSelected({ ...selected, mobile: event.target.value })} /></Field>
+            </section>
+          ) : null}
+
           {selected.kind === "customer" ? (
             <div className="grid gap-4 border-t border-line pt-4 md:grid-cols-2">
               <h3 className="md:col-span-2 font-semibold text-foreground">ERP fields</h3>
-              <Field label="Sales Representative / MR Name">
+              <Field label="Company Contact">
                 <TextInput
                   value={selected.salesRepresentative ?? ""}
                   onChange={(event) =>
@@ -198,25 +211,7 @@ export function MasterModule({
             </div>
           ) : null}
 
-          {selected.kind === "mr" ? (
-            <div className="grid gap-4 border-t border-line pt-4 md:grid-cols-2">
-              <h3 className="md:col-span-2 font-semibold text-foreground">ERP fields</h3>
-              <Field label="Assigned Manager">
-                <TextInput
-                  value={selected.assignedManager ?? ""}
-                  onChange={(event) =>
-                    setSelected({ ...selected, assignedManager: event.target.value })
-                  }
-                />
-              </Field>
-              <Field label="Territory / Area">
-                <TextInput
-                  value={selected.territory ?? ""}
-                  onChange={(event) => setSelected({ ...selected, territory: event.target.value })}
-                />
-              </Field>
-            </div>
-          ) : null}
+
 
           <div className="flex flex-wrap gap-3">
             <Button onClick={save}>Save</Button>

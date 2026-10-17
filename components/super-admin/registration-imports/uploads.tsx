@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { RegistrationImportNavigation } from "@/components/super-admin/registration-imports/navigation";
 import { formatDateTime } from "@/lib/utils";
 
-type Upload = { id:string; fileName:string; kind:"customer"|"mr"|"patient"; uploadedBy:string; uploadedAt:string; totalRecords:number; successfulRecords:number; failedRecords:number; progress:number; status:string; errorSummary?:string; rowErrors?:Array<{rowNumber:number;errors:string[]}> };
-const typeName = (kind: Upload["kind"]) => kind === "mr" ? "MR" : `${kind[0].toUpperCase()}${kind.slice(1)}`;
+type Upload = { id:string; fileName:string; kind:"customer"|"company"|"patient"; uploadedBy:string; uploadedAt:string; totalRecords:number; successfulRecords:number; failedRecords:number; progress:number; status:string; errorSummary?:string; rowErrors?:Array<{rowNumber:number;errors:string[]}> };
+const typeName = (kind: Upload["kind"]) => kind === "company" ? "Company" : `${kind[0].toUpperCase()}${kind.slice(1)}`;
 
 export function RegistrationUploads() {
   const [items, setItems] = useState<Upload[]>([]);

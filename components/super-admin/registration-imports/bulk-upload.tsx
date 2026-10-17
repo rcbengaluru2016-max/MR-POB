@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { RegistrationImportNavigation } from "@/components/super-admin/registration-imports/navigation";
 
-type Kind = "customer" | "mr" | "patient";
+type Kind = "customer" | "company" | "patient";
 type PreviewRow = { rowNumber: number; name: string; mobile: string; email: string; valid: boolean; duplicate: boolean; errors: string[] };
 type ImportResultRow = { rowNumber: number; errors: string[] };
 
@@ -45,7 +45,7 @@ export function BulkRegistrationUpload() {
       <h2 className="text-xl font-semibold">Bulk Upload</h2>
       <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">Download the category template, fill in up to 250 records, then select the workbook and any supporting files referenced in its file-name columns. Passwords are validated but never shown in the preview.</p>
       <div className="mt-5 grid gap-4 md:grid-cols-3">
-        <label className="grid gap-1 text-sm font-medium">Registration category<select value={kind} onChange={(event) => { setKind(event.target.value as Kind); setPreview([]); setResults([]); }} className="h-11 rounded-lg border border-line bg-white px-3"><option value="customer">Customer</option><option value="mr">MR</option><option value="patient">Patient</option></select></label>
+        <label className="grid gap-1 text-sm font-medium">Registration category<select value={kind} onChange={(event) => { setKind(event.target.value as Kind); setPreview([]); setResults([]); }} className="h-11 rounded-lg border border-line bg-white px-3"><option value="customer">Customer</option><option value="company">Company</option><option value="patient">Patient</option></select></label>
         <div className="flex items-end"><a href={`/api/super-admin/registration-imports/bulk?kind=${kind}`} className="inline-flex h-11 items-center rounded-lg border border-brand px-4 text-sm font-semibold text-brand hover:bg-brand/5">Download Excel Template</a></div>
         <label className="grid gap-1 text-sm font-medium">Completed Excel file<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => { setWorkbook(event.target.files?.[0] ?? null); setPreview([]); setResults([]); }} className="block h-11 w-full rounded-lg border border-line p-2 text-sm" /></label>
       </div>

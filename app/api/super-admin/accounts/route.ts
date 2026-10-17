@@ -57,7 +57,7 @@ export async function POST(request: Request) {
       const statusTarget = data.action === "status"
         ? store.accounts.find((item) => item.username.toLowerCase() === data.username!.toLowerCase())
         : null;
-      if (data.action === "status" && (!statusTarget || !["customer", "mr", "patient", "admin", "super_admin"].includes(statusTarget.userType))) throw new Error("Account not found.");
+      if (data.action === "status" && (!statusTarget || !["customer", "company", "patient", "admin", "super_admin"].includes(statusTarget.userType))) throw new Error("Account not found.");
       if (requiresMfa) {
         if (!data.reauthCode) throw new Error("MFA_REQUIRED");
         const counter = verifyTotpCounter(decryptMfaSecret(actor.mfaSecret), data.reauthCode, Date.now(), actor.lastMfaCounter);
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
         detail = `${data.role}: ${username}`;
       } else if (data.action === "status") {
         const target = store.accounts.find((item) => item.username.toLowerCase() === data.username!.toLowerCase());
-        if (!target || !["customer", "mr", "patient", "admin", "super_admin"].includes(target.userType)) throw new Error("Account not found.");
+        if (!target || !["customer", "company", "patient", "admin", "super_admin"].includes(target.userType)) throw new Error("Account not found.");
         if (target.username.toLowerCase() === actor.username.toLowerCase()) throw new Error("You cannot change your own account status.");
         target.status = data.status!;
         auditAction = data.status === "locked" ? "account_locked_by_super_admin" : "account_unlocked_by_super_admin";

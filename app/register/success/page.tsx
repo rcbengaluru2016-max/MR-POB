@@ -7,7 +7,7 @@ export const metadata = { title: "Registration Successful" };
 
 const successMessages = {
   customer: "Customer Registration Successful!",
-  mr: "MR Registration Successful!",
+  company: "Company Registration Successful!",
   patient: "Patient Registration Successful!",
 } as const;
 

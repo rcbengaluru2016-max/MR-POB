@@ -4,7 +4,7 @@ import { isSuperAdminReady } from "@/lib/server/super-admin";
 import { toUploadedFile, optionalUpload, requiredUpload } from "@/lib/server/files";
 import { nextRegistrationId, submitRegistration } from "@/lib/server/workflow";
 import { SUPER_ADMIN_EMAIL } from "@/lib/server/super-admin-config";
-import { customerRegistrationFieldsSchema, mrRegistrationFieldsSchema, patientRegistrationFieldsSchema } from "@/lib/validation";
+import { customerRegistrationFieldsSchema, companyRegistrationFieldsSchema, patientRegistrationFieldsSchema } from "@/lib/validation";
 
 export const instant = false;
 
@@ -22,13 +22,16 @@ export async function POST(request: Request) {
       const record = await submitRegistration({ kind:"customer", id:await nextRegistrationId("customer"), status:"pending_verification", submittedAt:new Date().toISOString(), customerName:parsed.data.customerName, mobile:parsed.data.mobile, email:parsed.data.email || "", passwordHash:await hashPassword(parsed.data.password,salt), passwordSalt:salt, businessName:parsed.data.businessName, customerType:parsed.data.customerType, address:[parsed.data.addressLine1,parsed.data.addressLine2,parsed.data.addressLine3,parsed.data.addressLine4,parsed.data.pinCode].filter(Boolean).join(", "), addressLine1:parsed.data.addressLine1, addressLine2:parsed.data.addressLine2 || undefined, addressLine3:parsed.data.addressLine3 || undefined, addressLine4:parsed.data.addressLine4 || undefined, pinCode:parsed.data.pinCode, dlNumber1:parsed.data.dlNumber1, dlNumber2:parsed.data.dlNumber2, dlNumber3:parsed.data.dlNumber3 || undefined, fssaiNumber:parsed.data.fssaiNumber || undefined, gstNumber:parsed.data.gstNumber, creditDays:parsed.data.creditDays, paymentMethod:parsed.data.paymentMethod, files:{ dl1:await toUploadedFile(form.get("dl1") as File,"DL 1"), dl2:await toUploadedFile(form.get("dl2") as File,"DL 2"), dl3:await optionalUpload(form.get("dl3") as File | null ?? undefined,"DL 3"), gstCertificate:await requiredUpload(form.get("gstCertificate"),"GST certificate"), shopOutside:await toUploadedFile(form.get("shopOutside") as File,"Shop photo — outside"), shopInside:await toUploadedFile(form.get("shopInside") as File,"Shop photo — inside") } });
       return NextResponse.json({ registrationId:record.id,status:record.status });
     }
-    if (kind === "mr") {
-      const parsed = mrRegistrationFieldsSchema.safeParse({ mrName:value("mrName"), mobile:value("mobile"), email:value("email"), password:value("password"), confirmPassword:value("confirmPassword"), companyName:value("companyName"), position:value("position"), division:value("division"), termsAccepted:value("termsAccepted") === "true" });
-      if (!parsed.success) return NextResponse.json({ error:parsed.error.issues[0]?.message ?? "Invalid MR registration." }, { status:400 });
-      if (parsed.data.email.toLowerCase() === SUPER_ADMIN_EMAIL) return NextResponse.json({ error:"This email is reserved for administrator access." }, { status:400 });
-      const visitingCard = form.get("visitingCard");
-      if (!(visitingCard instanceof File) || visitingCard.size === 0) return NextResponse.json({ error:"Visiting card is required." }, { status:400 });
-      const record = await submitRegistration({ kind:"mr", id:await nextRegistrationId("mr"), status:"pending_verification", submittedAt:new Date().toISOString(), mrName:parsed.data.mrName, mobile:parsed.data.mobile, email:parsed.data.email, passwordHash:await hashPassword(parsed.data.password,salt), passwordSalt:salt, companyName:parsed.data.companyName, position:parsed.data.position, division:parsed.data.division, files:{ mrPhoto:await toUploadedFile(form.get("mrPhoto") as File,"MR photo"), visitingCard:await toUploadedFile(visitingCard,"Visiting card") } });
+    if (kind === "company") {
+      const parsed = companyRegistrationFieldsSchema.safeParse({ companyName:value("companyName"), division:value("division"), headquarter:value("headquarter"), adminFullName:value("adminFullName"), adminEmail:value("adminEmail"), adminMobile:value("adminMobile"), password:value("password"), confirmPassword:value("confirmPassword"), termsAccepted:value("termsAccepted") === "true" });
+      if (!parsed.success) return NextResponse.json({ error:parsed.error.issues[0]?.message ?? "Invalid Company registration." }, { status:400 });
+      if (parsed.data.adminEmail.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return NextResponse.json({ error:"This email is reserved for administrator access." }, { status:400 });
+      const logo = form.get("companyLogo"); const photo = form.get("adminPhoto");
+      for (const [file,label] of [[logo,"Company logo"],[photo,"Admin photo"]] as const) {
+        if (!(file instanceof File) || file.size === 0) return NextResponse.json({error:`${label} is required.`},{status:400});
+        if (file.size > 5 * 1024 * 1024 || !["image/jpeg","image/png","image/webp"].includes(file.type)) return NextResponse.json({error:`${label} must be a JPG, PNG, or WEBP image up to 5 MB.`},{status:400});
+      }
+      const record = await submitRegistration({ kind:"company", id:await nextRegistrationId("company"), status:"pending_verification", submittedAt:new Date().toISOString(), adminFullName:parsed.data.adminFullName, mobile:parsed.data.adminMobile, email:parsed.data.adminEmail, passwordHash:await hashPassword(parsed.data.password,salt), passwordSalt:salt, companyName:parsed.data.companyName, headquarter:parsed.data.headquarter, division:parsed.data.division, files:{ companyLogo:await toUploadedFile(logo as File,"Company logo"), adminPhoto:await toUploadedFile(photo as File,"Admin photo") } });
       return NextResponse.json({ registrationId:record.id,status:record.status });
     }
     if (kind === "patient") {
@@ -39,7 +42,7 @@ export async function POST(request: Request) {
       const record = await submitRegistration({ kind:"patient", id:await nextRegistrationId("patient"), status:"pending_verification", submittedAt:new Date().toISOString(), patientName:parsed.data.patientName, mobile:parsed.data.mobile, email:parsed.data.email || undefined, passwordHash:await hashPassword(parsed.data.password,salt), passwordSalt:salt, gender:parsed.data.gender || "", address:parsed.data.address, paymentMethod:parsed.data.paymentMethod, files:idProof instanceof File && idProof.size ? { idProof:await toUploadedFile(idProof,"ID proof") } : undefined });
       return NextResponse.json({ registrationId:record.id,status:record.status });
     }
-    return NextResponse.json({ error:"Choose Customer, MR, or Patient." }, { status:400 });
+    return NextResponse.json({ error:"Choose Customer, Company, or Patient." }, { status:400 });
   } catch (error) {
     return NextResponse.json({ error:error instanceof Error ? error.message : "Unable to submit registration." }, { status:400 });
   }

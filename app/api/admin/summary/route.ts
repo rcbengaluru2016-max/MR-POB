@@ -9,7 +9,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const store = await getStore();
-  const count = (kind: "customer" | "mr" | "patient", status: string) =>
+  const count = (kind: "customer" | "company" | "patient", status: string) =>
     store.registrations.filter((item) => item.kind === kind && item.status === status).length;
 
   return NextResponse.json({
@@ -18,10 +18,10 @@ export async function GET() {
       approved: count("customer", "approved"),
       rejected: count("customer", "rejected"),
     },
-    mr: {
-      pending: count("mr", "pending_verification"),
-      approved: count("mr", "approved"),
-      rejected: count("mr", "rejected"),
+    company: {
+      pending: count("company", "pending_verification"),
+      approved: count("company", "approved"),
+      rejected: count("company", "rejected"),
     },
     patient: {
       pending: count("patient", "pending_verification"),

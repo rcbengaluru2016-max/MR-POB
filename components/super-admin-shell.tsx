@@ -12,7 +12,7 @@ const links = [
   { href: "/super-admin/dashboard", label: "Dashboard" },
   { href: "/super-admin/approvals", label: "Registrations" },
   { href: "/super-admin/registrations/customer", label: "Customer" },
-  { href: "/super-admin/registrations/mr", label: "Medical Representative" },
+  { href: "/super-admin/registrations/company", label: "Company" },
   { href: "/super-admin/registrations/patient", label: "Patient" },
   { href: "/super-admin/registration-imports", label: "Imports" },
   { href: "/super-admin/users", label: "Users & Accounts" },

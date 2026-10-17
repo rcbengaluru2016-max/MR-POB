@@ -4,6 +4,10 @@ import { createSalt, hashPassword } from "@/lib/crypto";
 import type {
   AccountRecord,
   CustomerActivationChallenge,
+  CompanyEmployee,
+  CompanyOrder,
+  CompanyProduct,
+  CompanySpecialRate,
   SuperAdminPasswordChangeChallenge,
   AuditEvent,
   EmailLog,
@@ -23,21 +27,26 @@ const STORE_PATH = path.join(DATA_DIR, "store.json");
 export type AppStore = {
   counters: {
     customerReg: number;
-    mrReg: number;
+    companyReg: number;
     patientReg: number;
     customerMaster: number;
-    mrMaster: number;
+    companyMaster: number;
     patientMaster: number;
   };
   registrations: RegistrationRecord[];
   masters: MasterRecord[];
   accounts: AccountRecord[];
+  companyEmployees: CompanyEmployee[];
+  companyProducts: CompanyProduct[];
+  companySpecialRates: CompanySpecialRate[];
+  companyOrders: CompanyOrder[];
   audit: AuditEvent[];
   emails: EmailLog[];
   passwordResetTokens: PasswordResetToken[];
   registrationUploads: RegistrationUpload[];
   customerActivationChallenges: CustomerActivationChallenge[];
   superAdminPasswordChangeChallenges: SuperAdminPasswordChangeChallenge[];
+  legacyMrArchive?: { registrations: unknown[]; masters: unknown[]; uploads: unknown[]; accounts: unknown[] };
 };
 
 let memory: AppStore | null = null;
@@ -196,15 +205,19 @@ function emptyStore(): AppStore {
   return {
     counters: {
       customerReg: 1244,
-      mrReg: 244,
+      companyReg: 0,
       patientReg: 3420,
       customerMaster: 1244,
-      mrMaster: 244,
+      companyMaster: 0,
       patientMaster: 3420,
     },
     registrations: [],
     masters: [],
     accounts: [],
+    companyEmployees: [],
+    companyProducts: [],
+    companySpecialRates: [],
+    companyOrders: [],
     audit: [],
     emails: [],
     passwordResetTokens: [],
@@ -228,6 +241,11 @@ export async function getStore(): Promise<AppStore> {
   store.registrationUploads ??= [];
   store.customerActivationChallenges ??= [];
   store.superAdminPasswordChangeChallenges ??= [];
+  store.companyEmployees ??= [];
+  store.companyProducts ??= [];
+  store.companySpecialRates ??= [];
+  store.companyOrders ??= [];
+  store.companyEmployees.forEach((employee) => { employee.status ??= "active"; });
   return store;
 }
 
@@ -256,11 +274,16 @@ export async function refreshStore(): Promise<AppStore> {
   await getStore();
   await writeQueue;
   const raw = await readFile(STORE_PATH, "utf8");
-  const store = JSON.parse(raw) as AppStore;
+  const store = migrateLegacyMrData(JSON.parse(raw) as Record<string, unknown>);
   store.passwordResetTokens ??= [];
   store.registrationUploads ??= [];
   store.customerActivationChallenges ??= [];
   store.superAdminPasswordChangeChallenges ??= [];
+  store.companyEmployees ??= [];
+  store.companyProducts ??= [];
+  store.companySpecialRates ??= [];
+  store.companyOrders ??= [];
+  store.companyEmployees.forEach((employee) => { employee.status ??= "active"; });
   memory = store;
   initialization = Promise.resolve(store);
   return store;
@@ -271,11 +294,16 @@ async function initializeStore() {
   let store: AppStore;
   try {
     const raw = await readFile(STORE_PATH, "utf8");
-    store = JSON.parse(raw) as AppStore;
+    store = migrateLegacyMrData(JSON.parse(raw) as Record<string, unknown>);
     store.passwordResetTokens ??= [];
     store.registrationUploads ??= [];
     store.customerActivationChallenges ??= [];
     store.superAdminPasswordChangeChallenges ??= [];
+    store.companyEmployees ??= [];
+    store.companyProducts ??= [];
+    store.companySpecialRates ??= [];
+    store.companyOrders ??= [];
+    store.companyEmployees.forEach((employee) => { employee.status ??= "active"; });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     store = emptyStore();
@@ -284,6 +312,36 @@ async function initializeStore() {
   await seedSuperAdmin(store);
   await seedCustomerActivationFixture(store);
   await persistStore(store);
+  return store;
+}
+
+function migrateLegacyMrData(raw: Record<string, unknown>): AppStore {
+  const store = raw as unknown as AppStore;
+  const archive = store.legacyMrArchive ?? { registrations: [], masters: [], uploads: [], accounts: [] };
+  archive.registrations ??= []; archive.masters ??= []; archive.uploads ??= []; archive.accounts ??= [];
+  const isRecord = (item: unknown): item is Record<string, unknown> => typeof item === "object" && item !== null;
+  const archiveRows = (source: unknown[], predicate: (item: unknown) => boolean, destination: unknown[]) => {
+    const active: unknown[] = [];
+    for (const item of source ?? []) (predicate(item) ? destination : active).push(item);
+    return active;
+  };
+  store.registrations = archiveRows(store.registrations ?? [], (item) => isRecord(item) && item.kind === "mr", archive.registrations) as AppStore["registrations"];
+  store.masters = archiveRows(store.masters ?? [], (item) => isRecord(item) && item.kind === "mr", archive.masters) as AppStore["masters"];
+  store.registrationUploads = archiveRows(store.registrationUploads ?? [], (item) => isRecord(item) && item.kind === "mr", archive.uploads) as AppStore["registrationUploads"];
+  store.accounts = archiveRows(store.accounts ?? [], (item) => isRecord(item) && item.userType === "mr", archive.accounts) as AccountRecord[];
+  store.counters ??= { customerReg: 1244, companyReg: 0, patientReg: 3420, customerMaster: 1244, companyMaster: 0, patientMaster: 3420 };
+  const sequence = (value: unknown, prefix: string) => {
+    const match = typeof value === "string" ? value.match(new RegExp(`^${prefix}-(\\d+)$`)) : null;
+    return match ? Number(match[1]) : 0;
+  };
+  store.counters.companyReg = Math.max(store.counters.companyReg ?? 0, ...store.registrations.filter((item) => item.kind === "company").map((item) => sequence(item.id, "REG-COM")));
+  store.counters.companyMaster = Math.max(store.counters.companyMaster ?? 0, ...store.masters.filter((item) => item.kind === "company").map((item) => sequence(item.code, "ZNX-COM")));
+  store.counters.customerReg ??= 0; store.counters.patientReg ??= 0;
+  store.counters.customerMaster ??= 0; store.counters.patientMaster ??= 0;
+  const legacyCounters = store.counters as AppStore["counters"] & { mrReg?: number; mrMaster?: number };
+  delete legacyCounters.mrReg;
+  delete legacyCounters.mrMaster;
+  store.legacyMrArchive = archive;
   return store;
 }
 

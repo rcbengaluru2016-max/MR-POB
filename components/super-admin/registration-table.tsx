@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/utils";
 
-type Kind = "customer" | "mr" | "patient";
+type Kind = "customer" | "company" | "patient";
 type Item = { id: string; kind: Kind; accountStatus: "active" | "inactive"; submittedAt: string; name: string; email: string };
 type SortKey = "id" | "name" | "email" | "submittedAt" | "accountStatus";
 const pageSize = 10;
@@ -53,7 +53,7 @@ export function SuperAdminRegistrationTable({ kind }: { kind: Kind }) {
     else { setSortKey(key); setDescending(key === "submittedAt"); }
   }
 
-  const heading = kind === "mr" ? "MR Accounts" : `${kind[0].toUpperCase()}${kind.slice(1)} Accounts`;
+  const heading = kind === "company" ? "Company Accounts" : `${kind[0].toUpperCase()}${kind.slice(1)} Accounts`;
   const header = (label: string, key: SortKey) => <button type="button" onClick={() => sortBy(key)} className="font-semibold hover:text-brand">{label}{sortKey === key ? (descending ? " ↓" : " ↑") : ""}</button>;
 
   return (

@@ -23,8 +23,8 @@ export async function GET(request: Request) {
       name:
         item.kind === "customer"
           ? item.customerName
-          : item.kind === "mr"
-            ? item.mrName
+          : item.kind === "company"
+            ? item.companyName
             : item.patientName,
       mobile: item.mobile,
       email: item.email,

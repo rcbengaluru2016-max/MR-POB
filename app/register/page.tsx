@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { Building2, Stethoscope, UserRound } from "lucide-react";
+import { Building2, Building, UserRound } from "lucide-react";
 import { CompanyLogo } from "@/components/company-logo";
 
 export const metadata = { title: "Choose registration type" };
 
 const options = [
   { href: "/register/customer", title: "Customer", icon: Building2 },
-  { href: "/register/mr", title: "Medical Representative", icon: Stethoscope },
+  { href: "/register/company", title: "Company", icon: Building },
   { href: "/register/patient", title: "Patient", icon: UserRound },
 ];
 

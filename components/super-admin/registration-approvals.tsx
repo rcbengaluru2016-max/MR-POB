@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 
-type Kind = "customer" | "mr" | "patient";
+type Kind = "customer" | "company" | "patient";
 type Status = "pending_verification" | "submitted" | "approved" | "rejected" | "draft";
 type Registration = {
   id: string;
@@ -18,7 +18,7 @@ type Registration = {
 
 const tabs: { kind: Kind; label: string }[] = [
   { kind: "customer", label: "Customer" },
-  { kind: "mr", label: "Medical Representative" },
+  { kind: "company", label: "Company" },
   { kind: "patient", label: "Patient" },
 ];
 
@@ -76,7 +76,7 @@ export function RegistrationApprovals() {
     <div>
       <header>
         <h1 className="text-2xl font-semibold text-foreground">Registration Approvals</h1>
-        <p className="mt-1 text-sm text-muted">Review and approve new Customer, MR and Patient registrations</p>
+        <p className="mt-1 text-sm text-muted">Review and approve new Customer, Company and Patient registrations</p>
       </header>
 
       <div className="mt-6 flex gap-2 overflow-x-auto border-b border-line" role="tablist" aria-label="Registration type">

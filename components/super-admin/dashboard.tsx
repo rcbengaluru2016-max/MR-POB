@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDateTime } from "@/lib/utils";
 
-type Kind = "customer" | "mr" | "patient";
+type Kind = "customer" | "company" | "patient";
 type Status = "pending_verification" | "approved" | "rejected";
 type Summary = {
   period: string;
@@ -19,7 +19,7 @@ type Summary = {
   recent: { id: string; kind: Kind; name: string; status: string; submittedAt: string; email: string }[];
 };
 
-const kindLabels: Record<Kind, string> = { customer: "Customer", mr: "MR", patient: "Patient" };
+const kindLabels: Record<Kind, string> = { customer: "Customer", company: "Company", patient: "Patient" };
 const statusLabels: Record<Status, string> = {
   pending_verification: "Pending",
   approved: "Approved",
@@ -33,7 +33,7 @@ const statusColors: Record<Status, string> = {
 const metricLabels: Record<string, string> = {
   total: "Total Registrations",
   customer: "Customer Registrations",
-  mr: "MR Registrations",
+  company: "Company Registrations",
   patient: "Patient Registrations",
   pending: "Pending Registrations",
   approved: "Approved Registrations",
@@ -225,7 +225,7 @@ function CategoryBarChart({ data }: { data: Summary }) {
 }
 
 function CategoryPieChart({ data, total }: { data: Summary; total: number }) {
-  const colors: Record<Kind, string> = { customer: "#123daa", mr: "#e51b23", patient: "#7389c4" };
+  const colors: Record<Kind, string> = { customer: "#123daa", company: "#e51b23", patient: "#7389c4" };
   const [active, setActive] = useState<Kind | null>(null);
   let angle = -90;
   const slices = (Object.keys(kindLabels) as Kind[]).map((kind) => {
