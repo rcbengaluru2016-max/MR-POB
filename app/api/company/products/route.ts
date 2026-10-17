@@ -35,6 +35,7 @@ function parseProduct(body: Record<string, unknown>) {
   const productCode = typeof body.productCode === "string" ? body.productCode.trim().toUpperCase() : "";
   const brandName = typeof body.brandName === "string" ? body.brandName.trim() : "";
   const composition = typeof body.composition === "string" ? body.composition.trim() : "";
+  const packSize = typeof body.packSize === "string" ? body.packSize.trim() : "";
   const mrp = typeof body.mrp === "number" ? body.mrp : Number(body.mrp);
   const ptr = typeof body.ptr === "number" ? body.ptr : Number(body.ptr);
   const pts = typeof body.pts === "number" ? body.pts : Number(body.pts);
@@ -42,9 +43,10 @@ function parseProduct(body: Record<string, unknown>) {
   if (productCode && !/^[A-Z0-9-]{2,40}$/.test(productCode)) return { error: "Product Code may contain 2–40 letters, numbers, or hyphens." } as const;
   if (brandName.length < 1 || brandName.length > 120) return { error: "Enter a brand name (up to 120 characters)." } as const;
   if (composition.length > 2000) return { error: "Content / Composition must be 2,000 characters or fewer." } as const;
+  if (!packSize || packSize.length > 100) return { error: "Pack Size is required and must be 100 characters or fewer." } as const;
   if (![mrp, ptr, pts].every((value) => Number.isFinite(value) && value >= 0)) return { error: "MRP, PTR, and PTS must be non-negative numbers." } as const;
   if (!GST_RATES.has(gst)) return { error: "GST must be one of the configured rates: 0%, 5%, 12%, 18%, or 28%." } as const;
-  return { productCode, brandName, composition, mrp, ptr, pts, gst } as const;
+  return { productCode, brandName, composition, packSize, mrp, ptr, pts, gst } as const;
 }
 
 function parseImages(input: unknown, existing?: CompanyProduct["images"]) {
@@ -88,7 +90,7 @@ export async function POST(request: Request) {
     const code = product.productCode || `PRD-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
     if (store.companyProducts.some((item) => item.companyCode === context.master.code && item.productCode.toLowerCase() === code.toLowerCase())) return { error: "That Product Code is already in use for this company." } as const;
     const now = new Date().toISOString();
-    const record: CompanyProduct = { id: crypto.randomUUID(), companyCode: context.master.code, productCode: code, brandName: product.brandName, composition: product.composition || undefined, mrp: product.mrp, ptr: product.ptr, pts: product.pts, gst: product.gst, images: images.images, status: "active", createdAt: now, updatedAt: now };
+    const record: CompanyProduct = { id: crypto.randomUUID(), companyCode: context.master.code, productCode: code, brandName: product.brandName, composition: product.composition || undefined, packSize: product.packSize || undefined, mrp: product.mrp, ptr: product.ptr, pts: product.pts, gst: product.gst, images: images.images, status: "active", createdAt: now, updatedAt: now };
     store.companyProducts.push(record);
     store.audit.unshift({ id: crypto.randomUUID(), at: now, actor: context.account.username, action: "company_product_created", masterCode: context.master.code, detail: `Product ${record.productCode} created` });
     return { product: record } as const;
@@ -119,7 +121,7 @@ export async function PATCH(request: Request) {
     if (store.companyProducts.some((item) => item.id !== product.id && item.companyCode === context.master.code && item.productCode.toLowerCase() === code.toLowerCase())) return { error: "That Product Code is already in use for this company." } as const;
     const images = parseImages(body.images, product.images);
     if ("error" in images) return { error: images.error } as const;
-    Object.assign(product, { productCode: code, brandName: fields.brandName, composition: fields.composition || undefined, mrp: fields.mrp, ptr: fields.ptr, pts: fields.pts, gst: fields.gst, images: images.images, updatedAt: now });
+    Object.assign(product, { productCode: code, brandName: fields.brandName, composition: fields.composition || undefined, packSize: fields.packSize || undefined, mrp: fields.mrp, ptr: fields.ptr, pts: fields.pts, gst: fields.gst, images: images.images, updatedAt: now });
     store.audit.unshift({ id: crypto.randomUUID(), at: now, actor: context.account.username, action: "company_product_updated", masterCode: context.master.code, detail: `Product ${product.productCode} details updated` });
     return { product } as const;
   });

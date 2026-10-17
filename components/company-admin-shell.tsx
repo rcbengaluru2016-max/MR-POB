@@ -49,7 +49,7 @@ export function CompanyAdminShell({ children, accountName }: {
         <Link href="/company/account-information" className={cn("company-account-link", pathname === "/company/account-information" && "is-active")} aria-label="Account Information" title="Account Information">
           <span className="company-avatar">{initials}</span>
         </Link>
-        <button type="button" onClick={logout} className="company-logout">Log out</button>
+        <button type="button" onClick={logout} className="company-logout">Logout</button>
       </div>
     </aside>
     <main className="company-main">

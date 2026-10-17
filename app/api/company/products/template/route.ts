@@ -15,6 +15,7 @@ export async function GET() {
     { header: "Product Code / Row Key", key: "productCode", width: 28 },
     { header: "Brand Name", key: "brandName", width: 32 },
     { header: "Content / Composition", key: "composition", width: 42 },
+    { header: "Pack Size", key: "packSize", width: 22 },
     { header: "MRP", key: "mrp", width: 16 },
     { header: "PTR", key: "ptr", width: 16 },
     { header: "PTS", key: "pts", width: 16 },
@@ -24,8 +25,9 @@ export async function GET() {
   sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF10254B" } };
   sheet.views = [{ state: "frozen", ySplit: 1 }];
   for (let row = 2; row <= 1000; row++) {
-    for (const col of [4, 5, 6]) sheet.getCell(row, col).dataValidation = { type: "decimal", operator: "greaterThanOrEqual", formulae: [0], allowBlank: false, showErrorMessage: true, errorTitle: "Invalid price", error: "Enter a non-negative number." };
-    sheet.getCell(row, 7).dataValidation = { type: "list", formulae: ['"0,5,12,18,28"'], allowBlank: false, showErrorMessage: true, errorTitle: "Invalid GST", error: "Choose 0, 5, 12, 18, or 28 percent." };
+    for (const col of [5, 6, 7]) sheet.getCell(row, col).dataValidation = { type: "decimal", operator: "greaterThanOrEqual", formulae: [0], allowBlank: false, showErrorMessage: true, errorTitle: "Invalid price", error: "Enter a non-negative number." };
+    sheet.getCell(row, 4).dataValidation = { type: "textLength", operator: "between", formulae: [1, 100], allowBlank: false, showErrorMessage: true, errorTitle: "Invalid Pack Size", error: "Enter a Pack Size with up to 100 characters." };
+    sheet.getCell(row, 8).dataValidation = { type: "list", formulae: ['"0,5,12,18,28"'], allowBlank: false, showErrorMessage: true, errorTitle: "Invalid GST", error: "Choose 0, 5, 12, 18, or 28 percent." };
   }
   const bytes = await workbook.xlsx.writeBuffer();
   return new NextResponse(bytes, { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": "attachment; filename=zenex-product-upload-template.xlsx", "Cache-Control": "no-store" } });

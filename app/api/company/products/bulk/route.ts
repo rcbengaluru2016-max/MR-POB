@@ -8,7 +8,7 @@ import type { CompanyProduct, UploadedFile } from "@/lib/types";
 const imageKinds = ["front", "composition", "manufacturer", "details"] as const;
 const maxImageSize = 4 * 1024 * 1024;
 const gstRates = new Set([0, 5, 12, 18, 28]);
-type RowResult = { rowNumber: number; productCode: string; brandName: string; composition: string; mrp: number; ptr: number; pts: number; gst: number; images?: CompanyProduct["images"]; errors: string[] };
+type RowResult = { rowNumber: number; productCode: string; brandName: string; composition: string; packSize: string; mrp: number; ptr: number; pts: number; gst: number; images?: CompanyProduct["images"]; errors: string[] };
 
 async function getCompany() {
   const session = await getSession();
@@ -73,11 +73,11 @@ async function parseFiles(form: FormData, context: NonNullable<Awaited<ReturnTyp
   const headers = new Map<string, number>();
   sheet.getRow(1).eachCell((cell, column) => { headers.set(cellText(cell.value).toLowerCase().replace(/[^a-z0-9]/g, ""), column); });
   const headerAliases: Record<string, string[]> = {
-    productCode: ["productcoderowkey", "productcode", "rowkey"], brandName: ["brandname"], composition: ["contentcomposition", "composition", "content"],
+    productCode: ["productcoderowkey", "productcode", "rowkey"], brandName: ["brandname"], composition: ["contentcomposition", "composition", "content"], packSize: ["packsize"],
     mrp: ["mrp"], ptr: ["ptr"], pts: ["pts"], gst: ["gst", "gstpercent"],
   };
   const columns = Object.fromEntries(Object.entries(headerAliases).map(([key, aliases]) => [key, aliases.map((alias) => headers.get(alias)).find((column) => column !== undefined)])) as Record<keyof typeof headerAliases, number | undefined>;
-  const missingHeaders = ["productCode", "brandName", "mrp", "ptr", "pts", "gst"].filter((key) => !columns[key as keyof typeof columns]);
+  const missingHeaders = ["productCode", "brandName", "packSize", "mrp", "ptr", "pts", "gst"].filter((key) => !columns[key as keyof typeof columns]);
   if (missingHeaders.length) return { error: `Missing required template columns: ${missingHeaders.join(", ")}.` } as const;
 
   const rows: RowResult[] = [];
@@ -90,6 +90,7 @@ async function parseFiles(form: FormData, context: NonNullable<Awaited<ReturnTyp
     const productCode = get("productCode").toUpperCase();
     const brandName = get("brandName");
     const composition = get("composition");
+    const packSize = get("packSize");
     const mrp = Number(get("mrp")); const ptr = Number(get("ptr")); const pts = Number(get("pts")); const gst = Number(get("gst"));
     const errors: string[] = [];
     if (!/^[A-Z0-9-]{2,40}$/.test(productCode)) errors.push("Product Code / Row Key must contain 2–40 letters, numbers, or hyphens.");
@@ -98,13 +99,14 @@ async function parseFiles(form: FormData, context: NonNullable<Awaited<ReturnTyp
     if (companyProducts.some((product) => product.productCode.toUpperCase() === productCode)) errors.push("Product Code already exists for this company.");
     if (!brandName || brandName.length > 120) errors.push("Brand Name is required and must be no longer than 120 characters.");
     if (composition.length > 2000) errors.push("Content / Composition must be 2,000 characters or fewer.");
+    if (!packSize || packSize.length > 100) errors.push("Pack Size is required and must be 100 characters or fewer.");
     if (![mrp, ptr, pts].every((value) => Number.isFinite(value) && value >= 0)) errors.push("MRP, PTR, and PTS must be non-negative numbers.");
     if (!gstRates.has(gst)) errors.push("GST must be 0%, 5%, 12%, 18%, or 28%.");
     const mapped = images.get(productCode) ?? {};
     errors.push(...(imageErrors.get(productCode) ?? []));
     for (const kind of imageKinds) if (!mapped[kind]) errors.push(`Missing image: ${productCode}_${kind}.jpg (or .png/.webp).`);
-    if (errors.length === 0) rows.push({ rowNumber, productCode, brandName, composition, mrp, ptr, pts, gst, images: mapped as CompanyProduct["images"], errors });
-    else rows.push({ rowNumber, productCode, brandName, composition, mrp, ptr, pts, gst, errors });
+    if (errors.length === 0) rows.push({ rowNumber, productCode, brandName, composition, packSize, mrp, ptr, pts, gst, images: mapped as CompanyProduct["images"], errors });
+    else rows.push({ rowNumber, productCode, brandName, composition, packSize, mrp, ptr, pts, gst, errors });
   }
   const mappedKeys = new Set(rows.map((row) => row.productCode));
   const skippedImages = [...images.keys()].filter((key) => !mappedKeys.has(key));
@@ -138,7 +140,7 @@ export async function POST(request: Request) {
         continue;
       }
       const now = new Date().toISOString();
-      store.companyProducts.push({ id: crypto.randomUUID(), companyCode: context.master.code, productCode: row.productCode, brandName: row.brandName, composition: row.composition || undefined, mrp: row.mrp, ptr: row.ptr, pts: row.pts, gst: row.gst, images: row.images!, status: "active", createdAt: now, updatedAt: now });
+      store.companyProducts.push({ id: crypto.randomUUID(), companyCode: context.master.code, productCode: row.productCode, brandName: row.brandName, composition: row.composition || undefined, packSize: row.packSize || undefined, mrp: row.mrp, ptr: row.ptr, pts: row.pts, gst: row.gst, images: row.images!, status: "active", createdAt: now, updatedAt: now });
       successful.push(row.productCode);
     }
     const at = new Date().toISOString();

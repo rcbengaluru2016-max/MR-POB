@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { getCompanyAdminContext } from "@/lib/server/company-admin";
+import { CompanyChangePassword } from "@/components/company/change-password";
 
 function date(value?: string) {
   if (!value) return "Never";
@@ -26,6 +27,7 @@ async function CompanyAccountInformationContent() {
         <div><small>Last login</small><strong>{date(account.lastLoginAt)}</strong></div>
       </div>
       <p className="company-security-note">Your password and authentication credentials are never displayed here.</p>
+      <CompanyChangePassword mfaRequired={Boolean(account.mfaEnabled)} />
     </section>
   </div>;
 }
