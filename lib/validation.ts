@@ -4,7 +4,6 @@ import {
   CREDIT_DAY_VALUES,
   CUSTOMER_TYPES,
   MAX_FILE_BYTES,
-  MR_POSITIONS,
   CUSTOMER_PAYMENT_METHODS,
   PATIENT_PAYMENT_METHODS,
 } from "./constants";
@@ -46,6 +45,21 @@ function requiredFile(label: string) {
           code: "custom",
           message: `${label} must be JPG, PNG, WEBP, or PDF`,
         });
+      }
+    });
+}
+
+function requiredImage(label: string) {
+  return z
+    .custom<FileList>((value) => value instanceof FileList && value.length > 0, {
+      message: `${label} is required`,
+    })
+    .superRefine((files, ctx) => {
+      const file = files[0];
+      if (!file) return;
+      if (file.size > MAX_FILE_BYTES) ctx.addIssue({ code: "custom", message: `${label} must be 5 MB or smaller` });
+      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+        ctx.addIssue({ code: "custom", message: `${label} must be JPG, PNG, or WEBP` });
       }
     });
 }
@@ -134,33 +148,29 @@ export const customerRegistrationSchema = z
     path: ["confirmPassword"],
   });
 
-const mrRegistrationFields = {
-  mrName: z.string().trim().min(2, "MR name is required"),
-  mobile,
-  email,
+const companyRegistrationFields = {
+  companyName: z.string().trim().min(2, "Company name is required"),
+  division: z.string().trim().min(1, "Division is required"),
+  headquarter: z.string().trim().min(2, "Headquarter is required"),
+  adminFullName: z.string().trim().min(2, "Admin full name is required"),
+  adminEmail: email,
+  adminMobile: mobile,
   password,
   confirmPassword: z.string(),
-  companyName: z.string().trim().min(2, "Company name is required"),
-  position: z.enum(MR_POSITIONS),
-  division: z.string().trim().min(1, "Division is required"),
   termsAccepted: z.boolean().refine((value) => value === true, {
-    message: "You must accept the terms and conditions",
+    message: "You must accept the Terms & Conditions",
   }),
 };
 
-export const mrRegistrationFieldsSchema = z
-  .object(mrRegistrationFields)
+export const companyRegistrationFieldsSchema = z
+  .object(companyRegistrationFields)
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
     path: ["confirmPassword"],
   });
 
-export const mrRegistrationSchema = z
-  .object({
-    ...mrRegistrationFields,
-    mrPhoto: requiredFile("MR photo"),
-    visitingCard: requiredFile("Visiting card"),
-  })
+export const companyRegistrationSchema = z
+  .object({ ...companyRegistrationFields, companyLogo: requiredImage("Company logo"), adminPhoto: requiredImage("Admin photo") })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
     path: ["confirmPassword"],

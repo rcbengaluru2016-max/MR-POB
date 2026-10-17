@@ -48,10 +48,10 @@ export async function nextRegistrationId(kind: RegistrationRecord["kind"]) {
     await persistStore(store);
     return nextId(REGISTRATION_PREFIX.customer, store.counters.customerReg);
   }
-  if (kind === "mr") {
-    store.counters.mrReg += 1;
+  if (kind === "company") {
+    store.counters.companyReg += 1;
     await persistStore(store);
-    return nextId(REGISTRATION_PREFIX.mr, store.counters.mrReg);
+    return nextId(REGISTRATION_PREFIX.company, store.counters.companyReg);
   }
   store.counters.patientReg += 1;
   await persistStore(store);
@@ -63,9 +63,9 @@ function nextMasterCode(kind: RegistrationRecord["kind"], store: Awaited<ReturnT
     store.counters.customerMaster += 1;
     return nextId(MASTER_PREFIX.customer, store.counters.customerMaster);
   }
-  if (kind === "mr") {
-    store.counters.mrMaster += 1;
-    return nextId(MASTER_PREFIX.mr, store.counters.mrMaster);
+  if (kind === "company") {
+    store.counters.companyMaster += 1;
+    return nextId(MASTER_PREFIX.company, store.counters.companyMaster);
   }
   store.counters.patientMaster += 1;
   return nextId(MASTER_PREFIX.patient, store.counters.patientMaster);
@@ -73,7 +73,7 @@ function nextMasterCode(kind: RegistrationRecord["kind"], store: Awaited<ReturnT
 
 function displayName(record: RegistrationRecord) {
   if (record.kind === "customer") return record.customerName;
-  if (record.kind === "mr") return record.mrName;
+  if (record.kind === "company") return record.adminFullName;
   return record.patientName;
 }
 
@@ -110,21 +110,21 @@ function toMaster(record: RegistrationRecord, code: string, actor: string): Mast
       files: record.files,
     };
   }
-  if (record.kind === "mr") {
+  if (record.kind === "company") {
     return {
-      kind: "mr",
+      kind: "company",
       code,
       registrationId: record.id,
       createdAt: now,
       approvalDate: now,
       approvedBy: actor,
       status: "active",
-      mrName: record.mrName,
+      companyName: record.companyName,
+      division: record.division,
+      headquarter: record.headquarter,
+      adminFullName: record.adminFullName,
       mobile: record.mobile,
       email: record.email,
-      companyName: record.companyName,
-      position: record.position,
-      division: record.division,
       files: record.files,
     };
   }

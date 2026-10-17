@@ -38,7 +38,7 @@ in client-side variables or commit them to source control.
 
 Open [http://localhost:3000/login](http://localhost:3000/login) to sign in.
 Use [http://localhost:3000/register](http://localhost:3000/register) to start
-a Customer, MR, or Patient registration.
+a Customer, Company, or Patient registration.
 Existing customers can begin verified account activation at
 [http://localhost:3000/customer-activation](http://localhost:3000/customer-activation).
 
@@ -72,7 +72,7 @@ The production server uses `http://localhost:3000` by default.
 
 ## Product flow
 
-1. User registers as Customer, MR, or Patient.
+1. User registers as Customer, Company, or Patient.
 2. Status becomes Pending Verification and a Registration ID is issued.
 3. Admin verifies documents, then approves or rejects (reject reason required).
 4. Approval automatically creates the matching Master, generates `ZNX-…` Master Code, creates the user account with that code as username, activates it, and logs the activation email.

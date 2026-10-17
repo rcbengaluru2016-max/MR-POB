@@ -19,7 +19,7 @@ export function RegistrationTable({
   kind,
   title,
 }: {
-  kind: "customer" | "mr" | "patient";
+  kind: "customer" | "company" | "patient";
   title: string;
 }) {
   const [items, setItems] = useState<Item[]>([]);

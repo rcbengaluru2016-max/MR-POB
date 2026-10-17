@@ -55,7 +55,7 @@ export function LoginForm() {
         !next.startsWith("//") &&
         ((data.user.userType === "admin" && isAdminDestination) ||
           (data.user.userType === "super_admin" && isSuperAdminDestination) ||
-          ((data.user.userType === "customer" || data.user.userType === "mr" || data.user.userType === "patient") && isPortalDestination));
+          ((data.user.userType === "customer" || data.user.userType === "company" || data.user.userType === "patient") && isPortalDestination));
       router.push(canUseNext ? next : data.redirectTo);
       router.refresh();
     } catch {

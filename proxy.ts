@@ -18,13 +18,20 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
+  if (pathname.startsWith("/company") && session?.userType !== "company") {
+    const destination = session ? "/access-denied" : "/login";
+    return NextResponse.redirect(new URL(destination, request.url));
+  }
+
   if (pathname === "/login" && session) {
     const destination =
       session.userType === "super_admin"
         ? "/super-admin/dashboard"
         : session.userType === "admin"
           ? "/admin"
-          : "/portal";
+          : session.userType === "company"
+            ? "/company/dashboard"
+            : "/portal";
     return NextResponse.redirect(
       new URL(destination, request.url),
     );
@@ -34,5 +41,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/portal/:path*", "/login"],
+  matcher: ["/admin/:path*", "/portal/:path*", "/company/:path*", "/login"],
 };

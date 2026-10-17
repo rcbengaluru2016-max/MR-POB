@@ -18,11 +18,17 @@ export default function PortalPage() {
         if (!res.ok) throw new Error(data.error ?? "Unable to load your account.");
         return data;
       })
-      .then((data) => setUser(data.user))
+      .then((data) => {
+        if (data.user?.userType === "company") {
+          router.replace("/company/dashboard");
+          return;
+        }
+        setUser(data.user);
+      })
       .catch((item: unknown) => {
         setError(item instanceof Error ? item.message : "Unable to load your account.");
       });
-  }, []);
+  }, [router]);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });

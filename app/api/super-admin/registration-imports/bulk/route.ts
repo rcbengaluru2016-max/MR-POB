@@ -3,32 +3,32 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSalt, hashPassword } from "@/lib/crypto";
 import { encryptUploadFile } from "@/lib/server/upload-file";
-import { CREDIT_DAY_VALUES, CUSTOMER_PAYMENT_METHODS, CUSTOMER_TYPES, MAX_FILE_BYTES, MR_POSITIONS, PATIENT_PAYMENT_METHODS, REGISTRATION_PREFIX, ALLOWED_FILE_TYPES } from "@/lib/constants";
+import { CREDIT_DAY_VALUES, CUSTOMER_PAYMENT_METHODS, CUSTOMER_TYPES, MAX_FILE_BYTES, PATIENT_PAYMENT_METHODS, REGISTRATION_PREFIX, ALLOWED_FILE_TYPES } from "@/lib/constants";
 import { toUploadedFile } from "@/lib/server/files";
 import { isSuperAdminReady } from "@/lib/server/super-admin";
 import { SUPER_ADMIN_EMAIL } from "@/lib/server/super-admin-config";
 import { getSession } from "@/lib/server/session";
 import { nextId, persistStore, refreshStore, transactStore } from "@/lib/server/store";
 import type { RegistrationRecord } from "@/lib/types";
-import { customerRegistrationFieldsSchema, mrRegistrationFieldsSchema, patientRegistrationFieldsSchema } from "@/lib/validation";
+import { customerRegistrationFieldsSchema, companyRegistrationFieldsSchema, patientRegistrationFieldsSchema } from "@/lib/validation";
 
 export const instant = false;
-type Kind = "customer" | "mr" | "patient";
-const kinds = ["customer", "mr", "patient"] as const;
+type Kind = "customer" | "company" | "patient";
+const kinds = ["customer", "company", "patient"] as const;
 type Field = { key: string; required: boolean; dropdown?: readonly string[]; file?: string; label?: string };
 const fields: Record<Kind, Field[]> = {
   customer: [
     {key:"customerName",label:"Owner",required:true},{key:"mobile",label:"Mobile Number",required:true},{key:"email",label:"Email",required:false},{key:"password",label:"Password",required:true},{key:"confirmPassword",label:"Confirm Password",required:true},{key:"businessName",label:"Name",required:true},{key:"customerType",label:"Customer Category",required:true,dropdown:CUSTOMER_TYPES},{key:"addressLine1",label:"Address Line 1",required:true},{key:"addressLine2",label:"Address Line 2",required:false},{key:"addressLine3",label:"Address Line 3",required:false},{key:"addressLine4",label:"Address Line 4",required:false},{key:"pinCode",label:"PIN Code",required:true},{key:"dlNumber1",label:"DL Number 1",required:true},{key:"dlNumber2",label:"DL Number 2",required:true},{key:"dlNumber3",label:"DL Number 3",required:false},{key:"fssaiNumber",label:"FSSAI Number",required:false},{key:"gstNumber",label:"GST Number",required:true},{key:"creditDays",label:"Credit Days",required:true,dropdown:CREDIT_DAY_VALUES},{key:"paymentMethod",label:"Payment Method",required:true,dropdown:CUSTOMER_PAYMENT_METHODS},{key:"termsAccepted",label:"Terms Accepted",required:true,dropdown:["TRUE","FALSE"]},{key:"dl1File",label:"DL 1 File",required:true,file:"dl1"},{key:"dl2File",label:"DL 2 File",required:true,file:"dl2"},{key:"dl3File",label:"DL 3 File",required:false,file:"dl3"},{key:"gstCertificateFile",label:"GST Certificate File",required:true,file:"gstCertificate"},{key:"shopOutsideFile",label:"Shop Photo Outside",required:true,file:"shopOutside"},{key:"shopInsideFile",label:"Shop Photo Inside",required:true,file:"shopInside"},
   ],
-  mr: [
-    {key:"mrName",required:true},{key:"mobile",required:true},{key:"email",required:true},{key:"password",required:true},{key:"confirmPassword",required:true},{key:"companyName",required:true},{key:"position",required:true,dropdown:MR_POSITIONS},{key:"division",required:true},{key:"termsAccepted",required:true,dropdown:["TRUE","FALSE"]},{key:"mrPhotoFile",required:true,file:"mrPhoto"},{key:"visitingCardFile",required:true,file:"visitingCard"},
+  company: [
+    {key:"companyName",required:true},{key:"division",required:true},{key:"headquarter",required:true},{key:"adminFullName",required:true},{key:"adminEmail",required:true},{key:"adminMobile",required:true},{key:"password",required:true},{key:"confirmPassword",required:true},{key:"termsAccepted",required:true,dropdown:["TRUE","FALSE"]},{key:"companyLogoFile",required:true,file:"companyLogo",label:"Company Logo"},{key:"adminPhotoFile",required:true,file:"adminPhoto",label:"Admin Photo"},
   ],
   patient: [
     {key:"patientName",required:true},{key:"mobile",required:true},{key:"email",required:false},{key:"password",required:true},{key:"confirmPassword",required:true},{key:"gender",required:false,dropdown:["Female","Male","Other","Prefer not to say"]},{key:"address",required:true},{key:"paymentMethod",required:true,dropdown:PATIENT_PAYMENT_METHODS},{key:"termsAccepted",required:true,dropdown:["TRUE","FALSE"]},{key:"idProofFile",required:false,file:"idProof"},
   ],
 };
-const schema = { customer: customerRegistrationFieldsSchema, mr: mrRegistrationFieldsSchema, patient: patientRegistrationFieldsSchema };
-const nameKey = { customer:"customerName", mr:"mrName", patient:"patientName" } as const;
+const schema = { customer: customerRegistrationFieldsSchema, company: companyRegistrationFieldsSchema, patient: patientRegistrationFieldsSchema };
+const nameKey = { customer:"customerName", company:"companyName", patient:"patientName" } as const;
 
 function cellText(value: ExcelJS.CellValue) {
   if (value === null || value === undefined) return "";
@@ -80,7 +80,9 @@ async function getRows(workbookFile: File, kind: Kind, documents: File[]) {
     const input = rowInput(kind, values);
     const parsed = schema[kind].safeParse(input);
     if (!parsed.success) for (const issue of parsed.error.issues) errors.push(issue.message);
-    if (values.email?.toLowerCase() === SUPER_ADMIN_EMAIL) errors.push("This email is reserved for administrator access");
+    const mobileKey = kind === "company" ? values.adminMobile : values.mobile;
+    const emailKey = kind === "company" ? values.adminEmail : values.email;
+    if (emailKey?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) errors.push("This email is reserved for administrator access");
     const fileMap: Record<string, File | undefined> = {};
     try {
       for (const field of fields[kind].filter((entry) => entry.file)) {
@@ -88,14 +90,14 @@ async function getRows(workbookFile: File, kind: Kind, documents: File[]) {
         if (!filename) continue;
         const file = matchingFile(documents, filename);
         if (!file) errors.push(`${field.key}: select the supporting file named “${filename}”`);
-        else if (file.size > MAX_FILE_BYTES || !ALLOWED_FILE_TYPES.includes(file.type as (typeof ALLOWED_FILE_TYPES)[number])) errors.push(`${field.key}: file must be JPG, PNG, WEBP, or PDF and 5 MB or smaller`);
+        else if (file.size > MAX_FILE_BYTES || (kind === "company" ? !["image/jpeg", "image/png", "image/webp"].includes(file.type) : !ALLOWED_FILE_TYPES.includes(file.type as (typeof ALLOWED_FILE_TYPES)[number]))) errors.push(`${field.key}: file type or size is not allowed`);
         else fileMap[field.file!] = file;
       }
     } catch (error) { errors.push(error instanceof Error ? error.message : "Invalid supporting document."); }
-    const duplicate = Boolean(values.mobile && (seenMobiles.has(values.mobile) || (values.email && seenEmails.has(values.email.toLowerCase())) || existing.registrations.some((record) => record.status !== "rejected" && (record.mobile === values.mobile || (values.email && record.email?.toLowerCase() === values.email.toLowerCase())))));
+    const duplicate = Boolean(mobileKey && (seenMobiles.has(mobileKey) || (emailKey && seenEmails.has(emailKey.toLowerCase())) || existing.registrations.some((record) => record.status !== "rejected" && (record.mobile === mobileKey || (emailKey && record.email?.toLowerCase() === emailKey.toLowerCase())))));
     if (duplicate) errors.push("Duplicate mobile number or email address");
-    if (values.mobile) seenMobiles.add(values.mobile);
-    if (values.email) seenEmails.add(values.email.toLowerCase());
+    if (mobileKey) seenMobiles.add(mobileKey);
+    if (emailKey) seenEmails.add(emailKey.toLowerCase());
     foundRows.push({ rowNumber, values, input, errors: [...new Set(errors)], duplicate, files: fileMap });
   }
   if (!foundRows.length) throw new Error("The workbook has no registration rows.");
@@ -118,7 +120,7 @@ export async function GET(request: Request) {
     if (options) for (let row = 2; row <= 251; row++) sheet.getCell(row, index + 1).dataValidation = { type: "list", allowBlank: !field.required, formulae: [`"${options.join(",")}"`] };
   });
   const instructions = workbook.addWorksheet("Instructions");
-  instructions.addRows([["Zenex International — Registration Import"],["Use the Registrations sheet; keep its column names unchanged."],["* marks mandatory fields. Password and confirmation are required and never shown in preview."],["Enter TRUE in termsAccepted only when the applicant has accepted the applicable Terms & Conditions."],["File columns contain exact filenames. Select those files together with this workbook when importing."],["Customer required files: dl1File, dl2File, gstCertificateFile, shopOutsideFile, shopInsideFile. dl3File and fssaiNumber are optional. MR required files: mrPhotoFile, visitingCardFile. Patient idProofFile is optional."],["Supported documents: JPG, PNG, WEBP, PDF; 5 MB each. Total documents: 25 MB."],["Up to 250 registration rows per workbook. Imports remain Pending Verification."],[`Allowed values are provided as dropdowns where applicable. Customer creditDays values: ${CREDIT_DAY_VALUES.join(", ")}.`]]);
+  instructions.addRows([["Zenex International — Registration Import"],["Use the Registrations sheet; keep its column names unchanged."],["* marks mandatory fields. Password and confirmation are required and never shown in preview."],["Enter TRUE in termsAccepted only when the applicant has accepted the applicable Terms & Conditions."],["File columns contain exact filenames. Select those files together with this workbook when importing."],["Customer required files: dl1File, dl2File, gstCertificateFile, shopOutsideFile, shopInsideFile. dl3File and fssaiNumber are optional. Company required files: companyLogoFile, adminPhotoFile. Patient idProofFile is optional."],["Customer and Patient documents: JPG, PNG, WEBP, or PDF; Company logo and admin photo: JPG, PNG, or WEBP. 5 MB each. Total documents: 25 MB."],["Up to 250 registration rows per workbook. Imports remain Pending Verification."],[`Allowed values are provided as dropdowns where applicable. Customer creditDays values: ${CREDIT_DAY_VALUES.join(", ")}.`]]);
   instructions.getColumn(1).width = 120;
   instructions.getColumn(1).alignment = { wrapText: true, vertical: "top" };
   const data = Buffer.from(await workbook.xlsx.writeBuffer());
@@ -136,7 +138,7 @@ export async function POST(request: Request) {
     if (!kinds.includes(kind) || !(workbookFile instanceof File) || !["preview", "commit"].includes(action)) return NextResponse.json({ error: "Choose a category, workbook, and valid import action." }, { status: 400 });
     const documents = form.getAll("documents").filter((value): value is File => value instanceof File && value.size > 0);
     const rows = await getRows(workbookFile, kind, documents);
-    const preview = rows.map(({ rowNumber, values, errors, duplicate }) => ({ rowNumber, name: values[nameKey[kind]], mobile: values.mobile, email: values.email || "", valid: errors.length === 0, duplicate, errors }));
+    const preview = rows.map(({ rowNumber, values, errors, duplicate }) => ({ rowNumber, name: values[nameKey[kind]], mobile: (kind === "company" ? values.adminMobile : values.mobile), email: (kind === "company" ? values.adminEmail : values.email) || "", valid: errors.length === 0, duplicate, errors }));
     if (action === "preview") return NextResponse.json({ rows: preview, counts: { total: rows.length, valid: preview.filter((row) => row.valid).length, failed: preview.filter((row) => !row.valid && !row.duplicate).length, duplicates: preview.filter((row) => row.duplicate).length } });
     const ready = rows.filter((row) => row.errors.length === 0);
     const actor = (await getSession())?.username ?? "super_admin";
@@ -160,21 +162,24 @@ export async function POST(request: Request) {
       };
       for (const row of ready) {
         const { values, rowNumber } = row;
-        if (usedMobiles.has(values.mobile) || (values.email && usedEmails.has(values.email.toLowerCase()))) { results.push({ rowNumber, errors: ["Duplicate mobile number or email address"] }); if (upload) upload.failedRecords++; await checkpoint(); continue; }
+        const mobileValue = kind === "company" ? values.adminMobile : values.mobile; const emailValue = kind === "company" ? values.adminEmail : values.email;
+        if (usedMobiles.has(mobileValue) || (emailValue && usedEmails.has(emailValue.toLowerCase()))) { results.push({ rowNumber, errors: ["Duplicate mobile number or email address"] }); if (upload) upload.failedRecords++; await checkpoint(); continue; }
         const parsed = schema[kind].safeParse(row.input);
         if (!parsed.success) { results.push({ rowNumber, errors: parsed.error.issues.map((issue) => issue.message) }); if (upload) upload.failedRecords++; await checkpoint(); continue; }
         const salt = createSalt();
-        const common = { kind, id: "", status: "pending_verification" as const, submittedAt: new Date().toISOString(), mobile: values.mobile, email: values.email || "", passwordSalt: salt, passwordHash: await hashPassword(values.password, salt) };
+        const common = { kind, id: "", status: "pending_verification" as const, submittedAt: new Date().toISOString(), mobile: mobileValue, email: emailValue || "", passwordSalt: salt, passwordHash: await hashPassword(values.password, salt) };
         let record: RegistrationRecord;
         const uploadFile = async (key: string, label: string) => row.files[key] ? toUploadedFile(row.files[key]!, label) : undefined;
         if (kind === "customer") {
           const data = parsed.data as z.infer<typeof customerRegistrationFieldsSchema>;
           const counter = ++store.counters.customerReg; const id = nextId(REGISTRATION_PREFIX.customer, counter);
           record = { ...common, kind, id, customerName: data.customerName, businessName: data.businessName, customerType: data.customerType, address: [data.addressLine1,data.addressLine2,data.addressLine3,data.addressLine4,data.pinCode].filter(Boolean).join(", "), addressLine1:data.addressLine1,addressLine2:data.addressLine2 || undefined,addressLine3:data.addressLine3 || undefined,addressLine4:data.addressLine4 || undefined,pinCode:data.pinCode,dlNumber1:data.dlNumber1,dlNumber2:data.dlNumber2,dlNumber3:data.dlNumber3 || undefined,fssaiNumber:data.fssaiNumber || undefined,gstNumber:data.gstNumber,creditDays:data.creditDays,paymentMethod:data.paymentMethod,files:{dl1:(await uploadFile("dl1","DL 1"))!,dl2:(await uploadFile("dl2","DL 2"))!,dl3:await uploadFile("dl3","DL 3"),gstCertificate:(await uploadFile("gstCertificate","GST certificate"))!,shopOutside:(await uploadFile("shopOutside","Shop photo — outside"))!,shopInside:(await uploadFile("shopInside","Shop photo — inside"))!} };
-        } else if (kind === "mr") {
-          const data = parsed.data as z.infer<typeof mrRegistrationFieldsSchema>;
-          const counter = ++store.counters.mrReg; const id = nextId(REGISTRATION_PREFIX.mr, counter);
-          record = { ...common, kind, id, mrName: data.mrName, email: data.email, companyName: data.companyName, position: data.position, division: data.division, files: { mrPhoto: (await uploadFile("mrPhoto", "MR photo"))!, visitingCard: (await uploadFile("visitingCard", "Visiting card"))! } };
+        } else if (kind === "company") {
+          const data = parsed.data as z.infer<typeof companyRegistrationFieldsSchema>;
+          const counter = ++store.counters.companyReg; const id = nextId(REGISTRATION_PREFIX.company, counter);
+          const companyLogo = row.files.companyLogo; const adminPhoto = row.files.adminPhoto;
+          if (!companyLogo || !adminPhoto || [companyLogo, adminPhoto].some((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > MAX_FILE_BYTES)) { results.push({ rowNumber, errors: ["Company logo and admin photo must be JPG, PNG, or WEBP images up to 5 MB."] }); if (upload) upload.failedRecords++; await checkpoint(); continue; }
+          record = { ...common, kind, id, mobile: data.adminMobile, email: data.adminEmail, adminFullName: data.adminFullName, companyName: data.companyName, headquarter: data.headquarter, division: data.division, files: { companyLogo: (await uploadFile("companyLogo", "Company logo"))!, adminPhoto: (await uploadFile("adminPhoto", "Admin photo"))! } };
         } else {
           const data = parsed.data as z.infer<typeof patientRegistrationFieldsSchema>;
           const counter = ++store.counters.patientReg; const id = nextId(REGISTRATION_PREFIX.patient, counter);
@@ -182,7 +187,7 @@ export async function POST(request: Request) {
         }
         store.registrations.unshift(record);
         store.audit.unshift({ id: crypto.randomUUID(), at: new Date().toISOString(), actor, action: "registration_imported", registrationId: record.id, detail: `${kind} imported; pending verification` });
-        usedMobiles.add(values.mobile); if (values.email) usedEmails.add(values.email.toLowerCase());
+        usedMobiles.add(mobileValue); if (emailValue) usedEmails.add(emailValue.toLowerCase());
         results.push({ rowNumber, id: record.id });
         if (upload) upload.successfulRecords++;
         await checkpoint();

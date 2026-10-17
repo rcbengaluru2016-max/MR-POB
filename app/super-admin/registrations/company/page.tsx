@@ -2,10 +2,10 @@ import { SuperAdminRegistrationTable } from "@/components/super-admin/registrati
 import { redirect } from "next/navigation";
 import { isSuperAdminReady } from "@/lib/server/super-admin";
 
-export const metadata = { title: "MR Registrations" };
+export const metadata = { title: "Company Registrations" };
 export const instant = false;
 
-export default async function SuperAdminMrRegistrationsPage() {
+export default async function SuperAdminCompanyRegistrationsPage() {
   if (!(await isSuperAdminReady())) redirect("/super-admin/security-setup");
-  return <SuperAdminRegistrationTable kind="mr" />;
+  return <SuperAdminRegistrationTable kind="company" />;
 }

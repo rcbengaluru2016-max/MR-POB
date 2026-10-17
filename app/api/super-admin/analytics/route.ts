@@ -3,7 +3,7 @@ import type { RegistrationRecord, RegistrationStatus } from "@/lib/types";
 import { getStore } from "@/lib/server/store";
 import { isSuperAdminReady } from "@/lib/server/super-admin";
 
-const kinds = ["customer", "mr", "patient"] as const;
+const kinds = ["customer", "company", "patient"] as const;
 const statuses: RegistrationStatus[] = ["pending_verification", "approved", "rejected"];
 
 function dateKey(date: Date) {
@@ -66,7 +66,7 @@ export async function GET(request: Request) {
   const metrics = {
     total: (records: RegistrationRecord[]) => records.length,
     customer: (records: RegistrationRecord[]) => count(records, (record) => record.kind === "customer"),
-    mr: (records: RegistrationRecord[]) => count(records, (record) => record.kind === "mr"),
+    company: (records: RegistrationRecord[]) => count(records, (record) => record.kind === "company"),
     patient: (records: RegistrationRecord[]) => count(records, (record) => record.kind === "patient"),
     pending: (records: RegistrationRecord[]) => count(records, (record) => record.status === "pending_verification"),
     approved: (records: RegistrationRecord[]) => count(records, (record) => record.status === "approved"),
@@ -114,7 +114,7 @@ export async function GET(request: Request) {
       kind: record.kind,
       status: record.status,
       submittedAt: record.submittedAt,
-      name: record.kind === "customer" ? record.customerName : record.kind === "mr" ? record.mrName : record.patientName,
+      name: record.kind === "customer" ? record.customerName : record.kind === "company" ? record.companyName : record.patientName,
       email: record.email || "",
     }));
 

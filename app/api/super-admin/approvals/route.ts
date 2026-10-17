@@ -13,9 +13,9 @@ export async function GET() {
     kind: record.kind,
     status: record.status,
     submittedAt: record.submittedAt,
-    name: record.kind === "customer" ? record.customerName : record.kind === "mr" ? record.mrName : record.patientName,
+    name: record.kind === "customer" ? record.customerName : record.kind === "company" ? record.companyName : record.patientName,
     mobile: record.mobile,
-    businessType: record.kind === "customer" ? record.customerType : record.kind === "mr" ? record.division : "Patient",
+    businessType: record.kind === "customer" ? record.customerType : record.kind === "company" ? record.companyName : "Patient",
   }));
 
   return NextResponse.json({ items });

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 type Summary = {
   customer: { pending: number; approved: number; rejected: number };
-  mr: { pending: number; approved: number; rejected: number };
+  company: { pending: number; approved: number; rejected: number };
   patient: { pending: number; approved: number; rejected: number };
   masters: number;
   accounts: number;
@@ -34,10 +34,10 @@ export default function AdminDashboardPage() {
 
   const cards = [
     ["Customer pending", summary.customer.pending, "/admin/approvals/customer"],
-    ["MR pending", summary.mr.pending, "/admin/approvals/mr"],
+    ["Company pending", summary.company.pending, "/admin/approvals/company"],
     ["Patient pending", summary.patient.pending, "/admin/approvals/patient"],
     ["Approved customers", summary.customer.approved, "/admin/masters/customer"],
-    ["Approved MRs", summary.mr.approved, "/admin/masters/mr"],
+    ["Approved MRs", summary.company.approved, "/admin/masters/company"],
     ["Approved patients", summary.patient.approved, "/admin/masters/patient"],
   ] as const;
 
@@ -57,9 +57,9 @@ export default function AdminDashboardPage() {
       </div>
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
         <div className="rounded-2xl border border-line bg-white p-5">
-          <p className="text-sm text-muted">Rejected customers / MR / patients</p>
+          <p className="text-sm text-muted">Rejected customers / Company / patients</p>
           <p className="mt-2 font-semibold">
-            {summary.customer.rejected} / {summary.mr.rejected} / {summary.patient.rejected}
+            {summary.customer.rejected} / {summary.company.rejected} / {summary.patient.rejected}
           </p>
         </div>
         <div className="rounded-2xl border border-line bg-white p-5">

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getStore } from "@/lib/server/store";
 import { isSuperAdminReady } from "@/lib/server/super-admin";
 
-const kinds = ["customer", "mr", "patient"] as const;
+const kinds = ["customer", "company", "patient"] as const;
 
 export async function GET(request: Request) {
   if (!(await isSuperAdminReady())) {
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
         kind: record.kind,
         accountStatus: account.status === "active" || account.status === "unlocked" ? "active" : "inactive",
         submittedAt: record.submittedAt,
-        name: record.kind === "customer" ? record.customerName : record.kind === "mr" ? record.mrName : record.patientName,
+        name: record.kind === "customer" ? record.customerName : record.kind === "company" ? record.companyName : record.patientName,
         email: record.email || "",
       }];
     });

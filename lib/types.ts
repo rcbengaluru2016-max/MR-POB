@@ -1,7 +1,7 @@
-export type UserType = "customer" | "mr" | "patient" | "admin" | "super_admin";
+export type UserType = "customer" | "company" | "patient" | "admin" | "super_admin";
 
 export function isUserType(value: string): value is UserType {
-  return ["customer", "mr", "patient", "admin", "super_admin"].includes(value);
+  return ["customer", "company", "patient", "admin", "super_admin"].includes(value);
 }
 
 export type RegistrationStatus =
@@ -52,18 +52,20 @@ export type CustomerRegistrationInput = {
   shopInside: FileList;
 };
 
-export type MrRegistrationInput = {
-  mrName: string;
+export type CompanyRegistrationInput = {
+  companyName: string;
+  division: string;
+  headquarter: string;
+  adminFullName: string;
+  adminEmail: string;
+  adminMobile: string;
   mobile: string;
   email: string;
   password: string;
   confirmPassword: string;
-  companyName: string;
-  position: string;
-  division: string;
   termsAccepted: boolean;
-  mrPhoto: FileList;
-  visitingCard: FileList;
+  companyLogo: FileList;
+  adminPhoto: FileList;
 };
 
 export type PatientRegistrationInput = {
@@ -118,22 +120,22 @@ export type StoredCustomerRegistration = {
   decidedBy?: string;
 };
 
-export type StoredMrRegistration = {
-  kind: "mr";
+export type StoredCompanyRegistration = {
+  kind: "company";
   id: string;
   status: RegistrationStatus;
   submittedAt: string;
-  mrName: string;
+  companyName: string;
+  division: string;
+  headquarter: string;
+  adminFullName: string;
   mobile: string;
   email: string;
   passwordHash: string;
   passwordSalt: string;
-  companyName: string;
-  position: string;
-  division: string;
   files: {
-    mrPhoto: UploadedFile;
-    visitingCard: UploadedFile;
+    companyLogo: UploadedFile;
+    adminPhoto: UploadedFile;
   };
   rejectionReason?: string;
   decidedAt?: string;
@@ -163,7 +165,7 @@ export type StoredPatientRegistration = {
 
 export type RegistrationRecord =
   | StoredCustomerRegistration
-  | StoredMrRegistration
+  | StoredCompanyRegistration
   | StoredPatientRegistration;
 
 export type CustomerMaster = {
@@ -201,26 +203,111 @@ export type CustomerMaster = {
   paymentMode?: string;
 };
 
-export type MrMaster = {
-  kind: "mr";
+export type CompanyMaster = {
+  kind: "company";
   code: string;
   registrationId: string;
   createdAt: string;
   approvalDate: string;
   approvedBy: string;
   status: MasterStatus;
-  mrName: string;
+  companyName: string;
+  division: string;
+  headquarter: string;
+  adminFullName: string;
   mobile: string;
   email: string;
-  companyName: string;
-  position: string;
-  division: string;
-  files: StoredMrRegistration["files"];
-  assignedManager?: string;
-  territory?: string;
-  region?: string;
-  monthlyTarget?: number | null;
-  commissionPercent?: number | null;
+  files: StoredCompanyRegistration["files"];
+};
+
+export type CompanyEmployee = {
+  id: string;
+  companyCode: string;
+  /** Kept optional for compatibility with records created by earlier versions. */
+  employeeId?: string;
+  fullName: string;
+  designation: string;
+  division?: string;
+  reportingManagerId?: string;
+  contactNumber: string;
+  photo?: UploadedFile;
+  status?: "active" | "inactive";
+  createdAt: string;
+};
+
+export type CompanyProduct = {
+  id: string;
+  companyCode: string;
+  productCode: string;
+  brandName: string;
+  composition?: string;
+  mrp: number;
+  ptr: number;
+  pts: number;
+  gst: number;
+  images: {
+    front: UploadedFile;
+    composition: UploadedFile;
+    manufacturer: UploadedFile;
+    details: UploadedFile;
+  };
+  status: "active" | "inactive";
+  createdAt: string;
+  updatedAt?: string;
+};
+
+export type CompanySpecialRate = {
+  id: string;
+  companyCode: string;
+  productId: string;
+  productCode: string;
+  productName: string;
+  mrp: number;
+  specialRate: number;
+  startDate: string;
+  endDate: string;
+  enabled: boolean;
+  approvalStatus: "approved" | "pending" | "rejected";
+  createdAt: string;
+  updatedAt?: string;
+};
+
+export type CompanyOrder = {
+  id: string;
+  orderNumber?: string;
+  companyCode: string;
+  orderDate: string;
+  mrEmployeeId?: string;
+  mrName?: string;
+  mrContact?: string;
+  customerCode?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerPin?: string;
+  subtotal?: number;
+  taxAmount?: number;
+  totalAmount?: number;
+  customerApproval: "pending" | "approved" | "rejected";
+  billingStatus: "pending" | "billed" | "completed";
+  status: "pending" | "completed" | "cancelled";
+  items?: Array<{
+    productId: string;
+    productCode: string;
+    brandName: string;
+    composition?: string;
+    mrp: number;
+    ptr: number;
+    pts: number;
+    gst: number;
+    quantity: number;
+    specialRateId?: string;
+    specialRate?: number;
+    unitPrice?: number;
+    lineTotal?: number;
+  }>;
+  history?: Array<{ status: string; changedAt: string; changedBy?: string; note?: string }>;
+  createdAt: string;
+  updatedAt?: string;
 };
 
 export type PatientMaster = {
@@ -244,7 +331,7 @@ export type PatientMaster = {
   paymentMode?: string;
 };
 
-export type MasterRecord = CustomerMaster | MrMaster | PatientMaster;
+export type MasterRecord = CustomerMaster | CompanyMaster | PatientMaster;
 
 export type AccountRecord = {
   username: string;
@@ -319,7 +406,7 @@ export type SuperAdminPasswordChangeChallenge = {
 export type RegistrationUpload = {
   id: string;
   fileName: string;
-  kind: "customer" | "mr" | "patient";
+  kind: "customer" | "company" | "patient";
   uploadedBy: string;
   uploadedAt: string;
   totalRecords: number;

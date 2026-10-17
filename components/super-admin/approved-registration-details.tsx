@@ -6,7 +6,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { cn, formatDateTime } from "@/lib/utils";
 import { CREDIT_DAY_OPTIONS, PAYMENT_MODES } from "@/lib/constants";
 
-type Kind = "customer" | "mr" | "patient";
+type Kind = "customer" | "company" | "patient";
 type SafeDetails = {
   registration: Record<string, unknown> & { id: string; kind: Kind; status: string; submittedAt: string; files?: Record<string, { name: string; type: string; size: number; dataUrl: string }> };
   master: Record<string, unknown> & { code: string; status: string; createdAt: string; approvalDate: string };
@@ -28,9 +28,8 @@ const recordFields: Record<Kind, [string, string][]> = {
     ["dlNumber1", "DL Number 1"], ["dlNumber2", "DL Number 2"], ["dlNumber3", "DL Number 3"], ["fssaiNumber", "FSSAI Number"],
     ["gstNumber", "GST Number"], ["creditDays", "Credit Period"], ["paymentMethod", "Payment Method"],
   ],
-  mr: [
-    ["mrName", "Medical Representative"], ["mobile", "Mobile Number"], ["email", "Email"],
-    ["companyName", "Company Name"], ["position", "Position"], ["division", "Division"],
+  company: [
+    ["companyName", "Company Name"], ["division", "Division"], ["headquarter", "Headquarter"], ["adminFullName", "Admin Full Name"], ["mobile", "Admin Mobile Number"], ["email", "Admin Email Address"],
   ],
   patient: [
     ["patientName", "Patient Name"], ["mobile", "Mobile Number"], ["email", "Email"],
@@ -40,7 +39,7 @@ const recordFields: Record<Kind, [string, string][]> = {
 
 const documentLabels: Record<string, string> = {
   dl1: "DL 1", dl2: "DL 2", dl3: "DL 3", gstCertificate: "GST Certificate Upload", shopOutside: "Shop Outside", shopInside: "Shop Inside",
-  mrPhoto: "Live Photo", visitingCard: "Visiting Card", idProof: "ID Proof",
+  companyLogo: "Company Logo", adminPhoto: "Admin Photo", idProof: "ID Proof",
 };
 
 const progressSteps = [
@@ -93,7 +92,7 @@ function choicesWithCurrent(choices: Option[], selected: string, placeholder: st
 }
 
 function masterTitle(kind: Kind) {
-  return kind === "mr" ? "Medical Representative" : `${kind[0].toUpperCase()}${kind.slice(1)}`;
+  return kind === "company" ? "Company" : `${kind[0].toUpperCase()}${kind.slice(1)}`;
 }
 
 export function ApprovedRegistrationDetails({ kind, id }: { kind: Kind; id: string }) {
@@ -135,8 +134,8 @@ export function ApprovedRegistrationDetails({ kind, id }: { kind: Kind; id: stri
       return result.items as Record<string, unknown>[];
     };
     if (kind === "customer") {
-      void loadOptions("/api/admin/masters?kind=mr").then((items) => setOptions({
-        representatives: items.filter((item) => item.status === "active" && typeof item.mrName === "string").map((item) => ({ value: item.mrName as string, label: item.mrName as string })),
+      void loadOptions("/api/admin/masters?kind=company").then((items) => setOptions({
+        representatives: items.filter((item) => item.status === "active" && typeof item.adminFullName === "string").map((item) => ({ value: item.adminFullName as string, label: item.adminFullName as string })),
       })).catch(() => undefined);
     }
     return () => controller.abort();
@@ -255,7 +254,7 @@ export function ApprovedRegistrationDetails({ kind, id }: { kind: Kind; id: stri
 
       {kind === "customer" ? <section className="rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-6">
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <label className="grid gap-1 text-xs font-medium text-muted">Sales Representative<select disabled={!editing || saving} value={form.salesRepresentative ?? ""} onChange={(event) => setErpForm((current) => ({ ...form, ...current, salesRepresentative: event.target.value }))} className={erpInputClass}>{choicesWithCurrent(options.representatives, form.salesRepresentative ?? "", "Select Representative").map((option) => <option key={option.value || "empty"} value={option.value}>{option.label}</option>)}</select></label>
+          <label className="grid gap-1 text-xs font-medium text-muted">Company Contact<select disabled={!editing || saving} value={form.salesRepresentative ?? ""} onChange={(event) => setErpForm((current) => ({ ...form, ...current, salesRepresentative: event.target.value }))} className={erpInputClass}>{choicesWithCurrent(options.representatives, form.salesRepresentative ?? "", "Select Representative").map((option) => <option key={option.value || "empty"} value={option.value}>{option.label}</option>)}</select></label>
           <label className="grid gap-1 text-xs font-medium text-muted">Discount (%)<input disabled={!editing || saving} type="number" min="0" max="100" step="0.1" value={form.discountPercent ?? ""} onChange={(event) => setErpForm((current) => ({ ...form, ...current, discountPercent: event.target.value }))} placeholder="Enter discount" className={erpInputClass} /></label>
           <label className="grid gap-1 text-xs font-medium text-muted">Credit Period<input disabled={!editing || saving} value={form.creditPeriod ?? ""} onChange={(event) => setErpForm((current) => ({ ...form, ...current, creditPeriod: event.target.value }))} placeholder="e.g. 30 Days" className={erpInputClass} /></label>
           <label className="grid gap-1 text-xs font-medium text-muted">Credit Limit (₹)<input disabled={!editing || saving} type="number" min="0" value={form.creditLimit ?? ""} onChange={(event) => setErpForm((current) => ({ ...form, ...current, creditLimit: event.target.value }))} placeholder="Enter credit limit" className={erpInputClass} /></label>

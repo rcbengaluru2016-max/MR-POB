@@ -13,11 +13,12 @@ const masterUpdateSchema = z.object({
   creditPeriod: z.string().optional(),
   creditLimit: z.number().finite().min(0).nullable().optional(),
   paymentMode: z.enum(PAYMENT_MODES).or(z.literal("")).optional(),
-  assignedManager: z.string().optional(),
-  territory: z.string().optional(),
-  region: z.string().trim().max(120).optional(),
-  monthlyTarget: z.number().finite().min(0).nullable().optional(),
-  commissionPercent: z.number().finite().min(0).max(100).nullable().optional(),
+  companyName: z.string().trim().min(2).max(180).optional(),
+  division: z.string().trim().min(1).max(120).optional(),
+  headquarter: z.string().trim().min(2).max(180).optional(),
+  adminFullName: z.string().trim().min(2).max(120).optional(),
+  email: z.string().trim().email().max(254).optional(),
+  mobile: z.string().trim().regex(/^[6-9]\d{9}$/).optional(),
   linkedPharmacy: z.string().trim().max(180).optional(),
   refillCycle: z.string().trim().max(80).optional(),
 });
@@ -59,12 +60,23 @@ export async function PATCH(request: Request) {
     if ("creditLimit" in update) master.creditLimit = update.creditLimit;
     if ("paymentMode" in update) master.paymentMode = update.paymentMode || undefined;
   }
-  if (master.kind === "mr") {
-    if ("assignedManager" in update) master.assignedManager = update.assignedManager;
-    if ("territory" in update) master.territory = update.territory;
-    if ("region" in update) master.region = update.region;
-    if ("monthlyTarget" in update) master.monthlyTarget = update.monthlyTarget;
-    if ("commissionPercent" in update) master.commissionPercent = update.commissionPercent;
+  if (master.kind === "company") {
+    const registration = store.registrations.find((item) => item.id === master.registrationId);
+    const account = store.accounts.find((item) => item.registrationId === master.registrationId && item.userType === "company");
+    const email = update.email?.toLowerCase();
+    if (email && store.accounts.some((item) => item.username !== account?.username && item.email?.toLowerCase() === email)) {
+      return NextResponse.json({ error: "Another account already uses this email address." }, { status: 409 });
+    }
+    if (update.mobile && store.registrations.some((item) => item.id !== master.registrationId && item.mobile === update.mobile && item.status !== "rejected")) {
+      return NextResponse.json({ error: "Another registration already uses this mobile number." }, { status: 409 });
+    }
+    if ("companyName" in update) master.companyName = update.companyName!;
+    if ("division" in update) master.division = update.division!;
+    if ("headquarter" in update) master.headquarter = update.headquarter!;
+    if ("adminFullName" in update) master.adminFullName = update.adminFullName!;
+    if ("email" in update && update.email) { master.email = update.email; if (registration && registration.kind === "company") registration.email = update.email; if (account) account.email = update.email; }
+    if ("mobile" in update && update.mobile) { master.mobile = update.mobile; if (registration && registration.kind === "company") registration.mobile = update.mobile; }
+    if (account && "adminFullName" in update) account.displayName = update.adminFullName!;
   }
   if (master.kind === "patient") {
     if ("linkedPharmacy" in update) master.linkedPharmacy = update.linkedPharmacy;
@@ -73,6 +85,7 @@ export async function PATCH(request: Request) {
     if ("paymentMode" in update) master.paymentMode = update.paymentMode || undefined;
   }
   if (update.status) master.status = update.status;
+  store.audit.unshift({ id: crypto.randomUUID(), at: new Date().toISOString(), actor: session?.username ?? "admin", action: "master_updated", masterCode: master.code, registrationId: master.registrationId });
   await persistStore(store);
   return NextResponse.json({ item: master });
 }

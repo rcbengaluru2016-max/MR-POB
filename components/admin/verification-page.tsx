@@ -10,7 +10,7 @@ import { TextArea } from "@/components/ui/field";
 import { cn, formatDateTime } from "@/lib/utils";
 import type { UploadedFile } from "@/lib/types";
 
-type Kind = "customer" | "mr" | "patient";
+type Kind = "customer" | "company" | "patient";
 type RecordShape = {
   id: string;
   kind: Kind;
@@ -38,23 +38,23 @@ const documentLabels: Record<string, string> = {
   gstCertificate: "View GST Certificate Upload",
   shopOutside: "View Shop Outside",
   shopInside: "View Shop Inside",
-  mrPhoto: "View Live Photo",
-  visitingCard: "View Visiting Card",
+  companyLogo: "View Company Logo",
+  adminPhoto: "View Admin Photo",
   idProof: "View ID Proof",
 };
 
 function detailEntries(record: RecordShape): [string, string][] {
   const keys: Record<Kind, string[]> = {
     customer: ["customerName", "mobile", "email", "businessName", "customerType", "addressLine1", "addressLine2", "addressLine3", "addressLine4", "pinCode", "address", "dlNumber1", "dlNumber2", "dlNumber3", "fssaiNumber", "gstNumber", "creditDays", "paymentMethod"],
-    mr: ["mrName", "mobile", "email", "companyName", "position", "division"],
+    company: ["companyName", "division", "headquarter", "adminFullName", "mobile", "email"],
     patient: ["patientName", "mobile", "email", "gender", "address", "paymentMethod"],
   };
   const labels: Record<string, string> = {
-    customerName: "Owner", mrName: "Medical Representative", patientName: "Patient Name",
+    customerName: "Owner", adminFullName: "Admin Full Name", patientName: "Patient Name",
     mobile: "Mobile Number", email: "Email", businessName: "Name", customerType: "Customer Category",
     address: "Address", addressLine1: "Address Line 1", addressLine2: "Address Line 2", addressLine3: "Address Line 3", addressLine4: "Address Line 4", pinCode: "PIN Code", dlNumber1: "DL Number 1", dlNumber2: "DL Number 2", dlNumber3: "DL Number 3", fssaiNumber: "FSSAI Number",
     gstNumber: "GST Number", creditDays: "Credit Period", paymentMethod: "Payment Method",
-    companyName: "Company Name", position: "Position", division: "Division", gender: "Gender",
+    companyName: "Company Name", headquarter: "Headquarter", division: "Division", gender: "Gender",
   };
   return keys[record.kind]
     .filter((key) => record[key] !== undefined && record[key] !== "" && !(key === "address" && record.addressLine1))
@@ -134,7 +134,7 @@ function VerificationContent({ expectedKind, superAdminFlow }: { expectedKind?: 
   if (!record) return <p className="text-sm text-muted">Loading registration details…</p>;
 
   if (masterCode && superAdminFlow) {
-    const masterName = record.kind === "mr" ? "Medical Representative" : record.kind[0].toUpperCase() + record.kind.slice(1);
+    const masterName = record.kind === "company" ? "Company" : record.kind[0].toUpperCase() + record.kind.slice(1);
     return (
       <section className="flex min-h-[55vh] flex-col items-center justify-center rounded-2xl border border-line bg-white px-5 py-12 text-center shadow-sm">
         <span aria-hidden="true" className="text-4xl font-semibold text-emerald-700">✓</span>
@@ -151,7 +151,7 @@ function VerificationContent({ expectedKind, superAdminFlow }: { expectedKind?: 
   const entries = detailEntries(record);
   const completedThrough = currentWorkflowStep(record);
   const rejectedAtReview = record.status === "rejected";
-  const kindLabel = record.kind === "mr" ? "Medical Representative" : record.kind[0].toUpperCase() + record.kind.slice(1);
+  const kindLabel = record.kind === "company" ? "Company" : record.kind[0].toUpperCase() + record.kind.slice(1);
 
   return (
     <div className="space-y-4 sm:space-y-5">

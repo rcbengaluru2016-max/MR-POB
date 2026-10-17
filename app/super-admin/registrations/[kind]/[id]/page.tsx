@@ -12,6 +12,6 @@ export default async function ApprovedRegistrationDetailsPage({
 }) {
   if (!(await isSuperAdminReady())) redirect("/super-admin/security-setup");
   const { kind, id } = await params;
-  if (kind !== "customer" && kind !== "mr" && kind !== "patient") notFound();
+  if (kind !== "customer" && kind !== "company" && kind !== "patient") notFound();
   return <ApprovedRegistrationDetails kind={kind} id={id} />;
 }

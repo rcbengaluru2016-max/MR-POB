@@ -10,10 +10,10 @@ import { cn } from "@/lib/utils";
 const links = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/approvals/customer", label: "Customer approvals" },
-  { href: "/admin/approvals/mr", label: "MR approvals" },
+  { href: "/admin/approvals/company", label: "Company registrations" },
   { href: "/admin/approvals/patient", label: "Patient approvals" },
   { href: "/admin/masters/customer", label: "Customer Master" },
-  { href: "/admin/masters/mr", label: "MR Master" },
+  { href: "/admin/masters/company", label: "Company" },
   { href: "/admin/masters/patient", label: "Patient Master" },
   { href: "/admin/accounts", label: "Users & Accounts" },
   { href: "/admin/reports", label: "Reports" },

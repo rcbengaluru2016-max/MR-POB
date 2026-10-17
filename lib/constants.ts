@@ -35,14 +35,6 @@ export const CREDIT_DAY_OPTIONS = [
   { value: "days_60_special", label: "60 days — requires special approval" },
 ] as const;
 
-export const MR_POSITIONS = [
-  "Medical representative",
-  "Area manager",
-  "Regional sales manager",
-  "Zonal sales manager",
-  "Sales manager",
-] as const;
-
 export const CUSTOMER_PAYMENT_METHODS = [
   "Cash on Delivery (COD)",
   "UPI",
@@ -71,12 +63,12 @@ export const PAYMENT_MODES = ["Cash", "Cheque", "NEFT"] as const;
 
 export const REGISTRATION_PREFIX = {
   customer: "REG-CUS",
-  mr: "REG-MR",
+  company: "REG-COM",
   patient: "REG-PAT",
 } as const;
 
 export const MASTER_PREFIX = {
   customer: "ZNX-CUS",
-  mr: "ZNX-MR",
+  company: "ZNX-COM",
   patient: "ZNX-PAT",
 } as const;
