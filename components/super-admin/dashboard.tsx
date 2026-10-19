@@ -40,7 +40,7 @@ const metricLabels: Record<string, string> = {
   rejected: "Rejected Registrations",
 };
 
-export function SuperAdminDashboard() {
+export function SuperAdminDashboard({ basePath = "/super-admin" }: { basePath?: string }) {
   const [period, setPeriod] = useState("monthly");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -178,7 +178,7 @@ export function SuperAdminDashboard() {
               <div className="mt-4 min-h-0 flex-1 overflow-auto">
                 <table className="min-w-[620px] w-full text-left text-sm">
                   <thead className="sticky top-0 bg-white text-xs uppercase text-muted"><tr><th className="pb-2 pr-3">Name</th><th className="pb-2 pr-3">Category</th><th className="pb-2 pr-3">Date</th><th className="pb-2 pr-3">Status</th><th className="pb-2">Action</th></tr></thead>
-                  <tbody>{data.recent.map((item) => <tr key={item.id} className="border-t border-line"><td className="py-2.5 pr-3"><span className="font-medium">{item.name}</span><span className="block text-xs text-muted">{item.email || "No email provided"}</span></td><td className="py-2.5 pr-3">{kindLabels[item.kind]}</td><td className="whitespace-nowrap py-2.5 pr-3">{formatDateTime(item.submittedAt)}</td><td className="py-2.5 pr-3"><StatusBadge value={item.status} /></td><td className="py-2.5"><Link href={item.status === "approved" ? `/super-admin/registrations/${item.kind}/${encodeURIComponent(item.id)}` : `/super-admin/approvals/${item.kind}/${encodeURIComponent(item.id)}`} className="inline-flex min-h-8 items-center rounded-lg border border-line px-3 text-xs font-semibold text-foreground hover:border-brand hover:text-brand">View</Link></td></tr>)}
+                  <tbody>{data.recent.map((item) => <tr key={item.id} className="border-t border-line"><td className="py-2.5 pr-3"><span className="font-medium">{item.name}</span><span className="block text-xs text-muted">{item.email || "No email provided"}</span></td><td className="py-2.5 pr-3">{kindLabels[item.kind]}</td><td className="whitespace-nowrap py-2.5 pr-3">{formatDateTime(item.submittedAt)}</td><td className="py-2.5 pr-3"><StatusBadge value={item.status} /></td><td className="py-2.5"><Link href={item.status === "approved" ? `${basePath}/registrations/${item.kind}/${encodeURIComponent(item.id)}` : `${basePath}/approvals/${item.kind}/${encodeURIComponent(item.id)}`} className="inline-flex min-h-8 items-center rounded-lg border border-line px-3 text-xs font-semibold text-foreground hover:border-brand hover:text-brand">View</Link></td></tr>)}
                   {!data.recent.length ? <tr><td colSpan={5} className="py-8 text-center text-muted">No registrations in this period.</td></tr> : null}</tbody>
                 </table>
               </div>

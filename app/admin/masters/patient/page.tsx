@@ -1,5 +1,5 @@
-import { MasterModule } from "@/components/admin/master-module";
+import { redirect } from "next/navigation";
 
-export default function PatientMasterPage() {
-  return <MasterModule kind="patient" title="Patient Master" />;
+export default function AdminPatientPage() {
+  redirect("/admin/registrations/patient");
 }

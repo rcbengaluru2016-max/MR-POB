@@ -116,7 +116,7 @@ export async function POST(request: Request) {
     user: sessionUser,
     redirectTo:
       account.userType === "admin"
-        ? "/admin"
+        ? "/admin/dashboard"
         : account.userType === "company"
           ? "/company/dashboard"
           : "/portal",

@@ -39,7 +39,7 @@ function maskedMobile(mobile: string) {
   return digits.length < 4 ? mobile : `${digits.slice(0, 2)}${"X".repeat(Math.max(0, digits.length - 4))}${digits.slice(-2)}`;
 }
 
-export function RegistrationApprovals() {
+export function RegistrationApprovals({ basePath = "/super-admin" }: { basePath?: string }) {
   const [items, setItems] = useState<Registration[]>([]);
   const [selectedKind, setSelectedKind] = useState<Kind>("customer");
   const [loading, setLoading] = useState(true);
@@ -131,7 +131,7 @@ export function RegistrationApprovals() {
                 <td className="px-3 py-4">{item.businessType || "—"}</td>
                 <td className="whitespace-nowrap px-3 py-4">{formatSubmitted(item.submittedAt)}</td>
                 <td className="px-3 py-4"><span className={cn("inline-flex rounded-full px-3 py-1 text-xs font-semibold", item.status === "approved" ? "bg-emerald-50 text-emerald-700" : item.status === "rejected" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800")}>{statusLabel(item.status)}</span></td>
-                <td className="px-3 py-4"><Link href={item.status === "approved" ? `/super-admin/registrations/${item.kind}/${encodeURIComponent(item.id)}` : `/super-admin/approvals/${item.kind}/${encodeURIComponent(item.id)}`} className="inline-flex min-h-9 items-center rounded-lg border border-line px-3 font-semibold text-foreground hover:border-brand hover:text-brand">View</Link></td>
+                <td className="px-3 py-4"><Link href={item.status === "approved" ? `${basePath}/registrations/${item.kind}/${encodeURIComponent(item.id)}` : `${basePath}/approvals/${item.kind}/${encodeURIComponent(item.id)}`} className="inline-flex min-h-9 items-center rounded-lg border border-line px-3 font-semibold text-foreground hover:border-brand hover:text-brand">View</Link></td>
               </tr>
             ))}
             {loading ? <tr><td className="px-3 py-10 text-center text-muted" colSpan={7}>Loading registrations…</td></tr> : null}

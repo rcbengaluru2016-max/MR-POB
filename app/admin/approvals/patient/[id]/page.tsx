@@ -1,5 +1,8 @@
 import { VerificationPage } from "@/components/admin/verification-page";
 
-export default function PatientVerificationPage() {
-  return <VerificationPage />;
+export const metadata = { title: "Registration Review" };
+export const instant = false;
+
+export default function AdminPatientVerificationPage() {
+  return <VerificationPage expectedKind="patient" superAdminFlow returnPath="/admin/approvals" />;
 }

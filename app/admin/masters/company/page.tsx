@@ -1,5 +1,5 @@
-import { MasterModule } from "@/components/admin/master-module";
+import { redirect } from "next/navigation";
 
-export default function CompanyPage() {
-  return <MasterModule kind="company" title="Company" />;
+export default function AdminCompanyPage() {
+  redirect("/admin/registrations/company");
 }

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { getStore } from "@/lib/server/store";
-import { isSuperAdminReady } from "@/lib/server/super-admin";
+import { isAdminSession } from "@/lib/server/super-admin";
 
 const kinds = ["customer", "company", "patient"] as const;
 
 export async function GET(request: Request) {
-  if (!(await isSuperAdminReady())) {
+  if (!(await isAdminSession())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const kind = new URL(request.url).searchParams.get("kind");

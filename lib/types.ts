@@ -296,6 +296,7 @@ export type CompanyOrder = {
     productCode: string;
     brandName: string;
     composition?: string;
+    packSize?: string;
     mrp: number;
     ptr: number;
     pts: number;

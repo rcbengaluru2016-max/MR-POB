@@ -7,7 +7,7 @@ type Kind = "customer" | "company" | "patient";
 type PreviewRow = { rowNumber: number; name: string; mobile: string; email: string; valid: boolean; duplicate: boolean; errors: string[] };
 type ImportResultRow = { rowNumber: number; errors: string[] };
 
-export function BulkRegistrationUpload() {
+export function BulkRegistrationUpload({ basePath = "/super-admin" }: { basePath?: string }) {
   const [kind, setKind] = useState<Kind>("customer");
   const [workbook, setWorkbook] = useState<File | null>(null);
   const [documents, setDocuments] = useState<File[]>([]);
@@ -40,7 +40,7 @@ export function BulkRegistrationUpload() {
   return <div className="mx-auto max-w-7xl">
     <h1 className="text-2xl font-semibold">Registration Imports</h1>
     <p className="mt-1 text-sm text-muted">Upload records for the existing review and approval workflow.</p>
-    <RegistrationImportNavigation current="/super-admin/registration-imports" />
+    <RegistrationImportNavigation current={`${basePath}/registration-imports`} basePath={basePath} />
     <section className="mt-6 rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-7">
       <h2 className="text-xl font-semibold">Bulk Upload</h2>
       <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">Download the category template, fill in up to 250 records, then select the workbook and any supporting files referenced in its file-name columns. Passwords are validated but never shown in the preview.</p>

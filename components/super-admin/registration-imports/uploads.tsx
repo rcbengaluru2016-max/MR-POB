@@ -7,7 +7,7 @@ import { formatDateTime } from "@/lib/utils";
 type Upload = { id:string; fileName:string; kind:"customer"|"company"|"patient"; uploadedBy:string; uploadedAt:string; totalRecords:number; successfulRecords:number; failedRecords:number; progress:number; status:string; errorSummary?:string; rowErrors?:Array<{rowNumber:number;errors:string[]}> };
 const typeName = (kind: Upload["kind"]) => kind === "company" ? "Company" : `${kind[0].toUpperCase()}${kind.slice(1)}`;
 
-export function RegistrationUploads() {
+export function RegistrationUploads({ basePath = "/super-admin" }: { basePath?: string }) {
   const [items, setItems] = useState<Upload[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -24,7 +24,7 @@ export function RegistrationUploads() {
   }, []);
   return <div className="mx-auto max-w-7xl">
     <h1 className="text-2xl font-semibold">Registration Imports</h1><p className="mt-1 text-sm text-muted">Monitor uploaded workbooks, processing progress, and row results.</p>
-    <RegistrationImportNavigation current="/super-admin/registration-imports/uploads" />
+    <RegistrationImportNavigation current={`${basePath}/registration-imports/uploads`} basePath={basePath} />
     <section className="mt-6 rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-7"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xl font-semibold">Uploads</h2><span className="text-xs text-muted">Refreshes every 3 seconds</span></div>
       {error ? <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-danger">{error}</p> : null}
       <div className="mt-4 overflow-x-auto rounded-xl border border-line"><table className="min-w-[880px] w-full text-left text-sm"><thead className="bg-background"><tr>{["File Name","Registration Type","Uploaded By","Uploaded At","Progress","Status","Action"].map((heading) => <th key={heading} className="whitespace-nowrap px-3 py-3 font-semibold">{heading}</th>)}</tr></thead><tbody>

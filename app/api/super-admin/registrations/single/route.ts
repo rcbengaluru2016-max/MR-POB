@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSalt, hashPassword } from "@/lib/crypto";
-import { isSuperAdminReady } from "@/lib/server/super-admin";
+import { isAdminSession } from "@/lib/server/super-admin";
 import { toUploadedFile, optionalUpload, requiredUpload } from "@/lib/server/files";
 import { nextRegistrationId, submitRegistration } from "@/lib/server/workflow";
 import { SUPER_ADMIN_EMAIL } from "@/lib/server/super-admin-config";
@@ -9,7 +9,7 @@ import { customerRegistrationFieldsSchema, companyRegistrationFieldsSchema, pati
 export const instant = false;
 
 export async function POST(request: Request) {
-  if (!(await isSuperAdminReady())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await isAdminSession())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const form = await request.formData();
     const kind = String(form.get("kind") ?? "");

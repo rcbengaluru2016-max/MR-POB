@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { decryptUploadFile } from "@/lib/server/upload-file";
-import { isSuperAdminReady } from "@/lib/server/super-admin";
+import { isAdminSession } from "@/lib/server/super-admin";
 import { refreshStore } from "@/lib/server/store";
 
 export const instant = false;
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await isSuperAdminReady())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await isAdminSession())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
   const store = await refreshStore();
   const upload = store.registrationUploads.find((item) => item.id === id);
