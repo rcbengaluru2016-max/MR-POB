@@ -1,5 +1,5 @@
 import { mockCustomers, mockProducts } from "./mock-data.ts";
-import type { MrProfile, Order, OrderDraft, OrderStatus } from "./types";
+import type { CartItem, MrProfile, Order, OrderDraft, OrderStatus, Product } from "./types";
 
 export const orderStatusLabels: Record<OrderStatus, string> = {
   awaiting_customer_approval: "Awaiting Customer Approval",
@@ -13,6 +13,21 @@ export const currency = (paise: number) => new Intl.NumberFormat("en-IN", { styl
 export const orderTotal = (order: Pick<Order, "items">) => order.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
 export const orderDate = (date: string) => new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date(date));
 export const validQuantity = (value: string) => /^\d+$/.test(value) && Number(value) > 0 && Number(value) <= maxQuantity;
+
+export function cartUnitPrice(item: CartItem, product: Product): number | null {
+  if (!item.specialRate) return product.unitPrice;
+  const value = item.specialRatePrice?.trim() ?? "";
+  const price = Math.round(Number(value) * 100);
+  return /^\d+(\.\d{1,2})?$/.test(value) && Number.isSafeInteger(price * maxQuantity) && price > 0 ? price : null;
+}
+
+export function cartLineTotals(item: CartItem, product: Product) {
+  const unitPrice = cartUnitPrice(item, product);
+  if (!validQuantity(item.quantity) || unitPrice === null) return null;
+  const total = unitPrice * Number(item.quantity);
+  const amount = Math.round(total / (1 + product.gst / 100));
+  return { amount, gst: total - amount, total };
+}
 
 export function searchCustomers(query: string) {
   const term = query.trim().toLowerCase();
@@ -53,6 +68,7 @@ export function validateDraft(draft: OrderDraft, profile: MrProfile): string | n
     const product = eligibleProducts.find((product) => product.id === item.productId);
     if (!product?.available) return "A product in your cart is unavailable. Remove it before continuing.";
     if (!validQuantity(item.quantity)) return `Enter a whole-number quantity between 1 and ${maxQuantity.toLocaleString("en-IN")} for ${product.brand}.`;
+    if (cartUnitPrice(item, product) === null) return `Enter a positive special rate price with up to two decimal places for ${product.brand}.`;
   }
   return null;
 }
@@ -70,7 +86,7 @@ export async function submitMockOrder(draft: OrderDraft, profile: MrProfile): Pr
     status: "awaiting_customer_approval",
     items: draft.items.map((item) => {
       const product = mockProducts.find((product) => product.id === item.productId)!;
-      return { product: { ...product }, quantity: Number(item.quantity), unitPrice: product.unitPrice };
+      return { ...item, product: { ...product }, quantity: Number(item.quantity), unitPrice: cartUnitPrice(item, product)! };
     }),
     history: [{ label: "Demo order submitted", date, note: "Awaiting customer approval. Created in this preview only." }],
   };

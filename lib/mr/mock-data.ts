@@ -18,14 +18,14 @@ export const mockCustomers: Customer[] = [
 ];
 
 export const mockProducts: Product[] = [
-  { id: "zenpara", name: "Paracetamol 650 mg · 10 tablets", brand: "Zenpara 650", code: "ZNX-P001", companyId: "zenex", companyName: "Zenex International", unitPrice: 3250, active: true, available: true },
-  { id: "zenvit", name: "Multivitamin · 15 tablets", brand: "Zenvit Plus", code: "ZNX-P002", companyId: "zenex", companyName: "Zenex International", unitPrice: 14500, active: true, available: true },
-  { id: "zencal", name: "Calcium + Vitamin D3 · 15 tablets", brand: "Zencal D3", code: "ZNX-P003", companyId: "zenex", companyName: "Zenex International", unitPrice: 11200, active: true, available: true },
-  { id: "zenacid", name: "Pantoprazole 40 mg · 10 tablets", brand: "Zenacid 40", code: "ZNX-P004", companyId: "zenex", companyName: "Zenex International", unitPrice: 8900, active: true, available: false },
-  { id: "novac", name: "Vitamin C 500 mg · 20 tablets", brand: "Nova C", code: "NVA-P001", companyId: "nova", companyName: "Nova Healthcare", unitPrice: 7800, active: true, available: true },
-  { id: "novazinc", name: "Zinc 20 mg · 10 tablets", brand: "Nova Zinc", code: "NVA-P002", companyId: "nova", companyName: "Nova Healthcare", unitPrice: 5600, active: true, available: true },
-  { id: "retired", name: "Multivitamin · 10 tablets", brand: "Zenvit Classic", code: "ZNX-P005", companyId: "zenex", companyName: "Zenex International", unitPrice: 9000, active: false, available: true },
-  { id: "unassigned", name: "Vitamin B complex · 10 tablets", brand: "Other B", code: "OTH-P001", companyId: "other", companyName: "Other Pharma", unitPrice: 6500, active: true, available: true },
+  { id: "zenpara", name: "Paracetamol 650 mg · 10 tablets", brand: "Zenpara 650", code: "ZNX-P001", companyId: "zenex", companyName: "Zenex International", unitPrice: 3250, mrp: 4000, gst: 12, active: true, available: true },
+  { id: "zenvit", name: "Multivitamin · 15 tablets", brand: "Zenvit Plus", code: "ZNX-P002", companyId: "zenex", companyName: "Zenex International", unitPrice: 14500, mrp: 18000, gst: 12, active: true, available: true },
+  { id: "zencal", name: "Calcium + Vitamin D3 · 15 tablets", brand: "Zencal D3", code: "ZNX-P003", companyId: "zenex", companyName: "Zenex International", unitPrice: 11200, mrp: 14000, gst: 12, active: true, available: true },
+  { id: "zenacid", name: "Pantoprazole 40 mg · 10 tablets", brand: "Zenacid 40", code: "ZNX-P004", companyId: "zenex", companyName: "Zenex International", unitPrice: 8900, mrp: 11000, gst: 12, active: true, available: false },
+  { id: "novac", name: "Vitamin C 500 mg · 20 tablets", brand: "Nova C", code: "NVA-P001", companyId: "nova", companyName: "Nova Healthcare", unitPrice: 7800, mrp: 9800, gst: 12, active: true, available: true },
+  { id: "novazinc", name: "Zinc 20 mg · 10 tablets", brand: "Nova Zinc", code: "NVA-P002", companyId: "nova", companyName: "Nova Healthcare", unitPrice: 5600, mrp: 7000, gst: 12, active: true, available: true },
+  { id: "retired", name: "Multivitamin · 10 tablets", brand: "Zenvit Classic", code: "ZNX-P005", companyId: "zenex", companyName: "Zenex International", unitPrice: 9000, mrp: 11200, gst: 12, active: false, available: true },
+  { id: "unassigned", name: "Vitamin B complex · 10 tablets", brand: "Other B", code: "OTH-P001", companyId: "other", companyName: "Other Pharma", unitPrice: 6500, mrp: 8100, gst: 12, active: true, available: true },
 ];
 
 function seedOrder(index: number, status: OrderStatus, customerIndex: number, day: number): Order {

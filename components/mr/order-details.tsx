@@ -17,7 +17,21 @@ export function MrOrderDetails({ id }: { id: string }) {
     <div className={cn("company-page-heading !mb-0", "mr-heading")}><div><h1>Order {order.reference}</h1><p>Placed on {orderDate(order.date)} by {profile.name}</p></div><MrOrderStatusBadge status={order.status} /></div>
     <section className="company-panel" aria-labelledby="mr-order-customer"><div className="company-panel-heading"><div><h2 id="mr-order-customer">Customer details</h2><p>{order.customer.address}</p></div></div><MrCustomerDetails customer={order.customer} /></section>
     <section className={cn("company-panel company-table-panel", "mr-tablePanel")} aria-labelledby="mr-order-products"><div className="company-panel-heading"><div><h2 id="mr-order-products">Products ordered</h2><p>{order.items.length} product lines · Prices per pack</p></div></div>
-      <div className="company-table-scroll" role="region" aria-label="Ordered products" tabIndex={0}><table className={cn("company-table", "mr-table", "mr-cartTable")}><caption className="sr-only">Products ordered in {order.reference}</caption><thead><tr><th scope="col">Product / Brand</th><th scope="col">Company</th><th scope="col">Quantity</th><th scope="col">Unit price</th><th scope="col">Line total</th></tr></thead><tbody>{order.items.map((item) => <tr key={item.product.id}><td><strong>{item.product.brand}</strong><small>{item.product.name}</small><small>{item.product.code}</small></td><td>{item.product.companyName}</td><td>{item.quantity}</td><td className="mr-amount">{currency(item.unitPrice)}</td><td className="mr-amount">{currency(item.unitPrice * item.quantity)}</td></tr>)}</tbody></table></div>
+      <div className="company-table-scroll" role="region" aria-label="Ordered products" tabIndex={0}>
+        <table className={cn("company-table", "mr-table", "mr-cartTable")}>
+          <caption className="sr-only">Products ordered in {order.reference}</caption>
+          <thead><tr><th scope="col">Product / Brand</th><th scope="col">Company</th><th scope="col">Quantity</th><th scope="col">Offer</th><th scope="col">Scheme</th><th scope="col">Unit price</th><th scope="col">Line total</th></tr></thead>
+          <tbody>{order.items.map((item) => <tr key={item.product.id}>
+            <td><strong>{item.product.brand}</strong><small>{item.product.name}</small><small>{item.product.code}</small></td>
+            <td>{item.product.companyName}</td>
+            <td>{item.quantity}</td>
+            <td className="min-w-36 max-w-56 whitespace-normal break-words">{item.offer?.trim() || "—"}</td>
+            <td className="min-w-24 max-w-40 whitespace-normal break-words">{item.scheme ? item.schemeType?.trim() || "Applied" : "—"}</td>
+            <td className="mr-amount">{currency(item.unitPrice)}{item.specialRate && <small>Special rate</small>}</td>
+            <td className="mr-amount">{currency(item.unitPrice * item.quantity)}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
       <div className="mr-totals"><p>Taxes included in demo prices</p><div><p>Order total</p><strong>{currency(orderTotal(order))}</strong></div></div>
     </section>
     <div className="mr-details">
