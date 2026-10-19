@@ -46,12 +46,12 @@ body {
 .company-nav-link { display: block; border-radius: 8px; padding: 8px 12px; color: var(--foreground); font-size: 14px; transition: background .16s ease, color .16s ease; }
 .company-nav-link:hover { background: #123daa0d; color: var(--brand); }
 .company-nav-link.is-active { background: #123daa1a; color: var(--brand); font-weight: 600; }
-.company-sidebar-account { display: grid; gap: 13px; margin-top: auto; padding-top: 20px; }
-.company-account-link { display: grid; width: 46px; height: 46px; place-items: center; justify-self: start; border: 1px solid #dce3ed; border-radius: 50%; background: white; padding: 3px; transition: box-shadow .15s ease, border-color .15s ease; }
-.company-account-link:hover, .company-account-link.is-active { border-color: #8ca7e3; box-shadow: 0 0 0 3px #1746b51a; }
-.company-avatar { display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: #eaf0ff; color: #123daa; font-size: 12px; font-weight: 750; }
-.company-logout { width: 100%; border: 1px solid #d6deea; border-radius: 9px; background: white; padding: 10px 13px; color: #17325b; text-align: left; font-size: 14px; font-weight: 600; transition: background .15s ease; }
-.company-logout:hover { background: #f5f7fb; }
+.company-sidebar-account { display: grid; justify-items: start; gap: 12px; margin-top: auto; padding-top: 28px; }
+.company-account-link { display: inline-flex; width: 44px; height: 44px; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 50%; background: white; color: var(--brand); font-size: 14px; font-weight: 700; letter-spacing: .025em; transition: background .15s ease, box-shadow .15s ease; }
+.company-account-link:hover { background: #123daa0d; }
+.company-account-link.is-active { box-shadow: 0 0 0 2px #123daa66; }
+.company-logout { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: transparent; padding: 8px 12px; color: var(--foreground); text-align: left; font-size: 14px; font-weight: 400; transition: background .15s ease; }
+.company-logout:hover { background: white; }
 .company-main { min-width: 0; padding: 16px; }
 .company-topbar { display: none; }
 .company-topbar > div { display: grid; gap: 4px; }
