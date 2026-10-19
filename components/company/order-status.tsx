@@ -19,7 +19,6 @@ export function OrderStatus() {
   const [mrId, setMrId] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -31,7 +30,7 @@ export function OrderStatus() {
     let active = true;
     const timer = window.setTimeout(() => {
       const params = new URLSearchParams({ page: String(page), pageSize: "25", status });
-      if (mrId) params.set("mrId", mrId); if (from) params.set("from", from); if (to) params.set("to", to); if (query.trim()) params.set("q", query.trim());
+      if (mrId) params.set("mrId", mrId); if (from) params.set("from", from); if (to) params.set("to", to);
       fetch(`/api/company/orders?${params}`, { cache: "no-store" }).then(async (response) => {
         const data = await response.json(); if (!response.ok) throw new Error(data.error || "Unable to load orders."); return data as PageResponse;
       }).then((data) => { if (active) { setOrders(data.orders); setTotal(data.total); setMrs(data.mrs); setError(""); } })
@@ -39,7 +38,7 @@ export function OrderStatus() {
         .finally(() => { if (active) setLoading(false); });
     }, 180);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [page, mrId, from, to, query, status, refreshCount]);
+  }, [page, mrId, from, to, status, refreshCount]);
 
   async function viewOrder(order: Order) {
     setSelectedOrder(order); setDetailLoading(true);
@@ -51,7 +50,7 @@ export function OrderStatus() {
     finally { setDetailLoading(false); }
   }
 
-  function clearFilters() { setMrId(""); setFrom(""); setTo(""); setQuery(""); setStatus("all"); setPage(1); }
+  function clearFilters() { setMrId(""); setFrom(""); setTo(""); setStatus("all"); setPage(1); }
   const pageCount = Math.max(1, Math.ceil(total / 25));
 
   return <div className="company-content">
@@ -61,7 +60,6 @@ export function OrderStatus() {
       <label>MR Name<select value={mrId} onChange={(event) => { setMrId(event.target.value); setPage(1); }}><option value="">All MRs</option>{mrs.map((mr) => <option value={mr.id} key={mr.id}>{mr.fullName}</option>)}</select></label>
       <label>From<input type="date" value={from} max={to || undefined} onChange={(event) => { setFrom(event.target.value); setPage(1); }} /></label>
       <label>To<input type="date" value={to} min={from || undefined} onChange={(event) => { setTo(event.target.value); setPage(1); }} /></label>
-      <label>Customer Name or Code<input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Search customer or code" /></label>
       <label>Order Status<select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="all">All statuses</option><option value="pending">Pending</option><option value="rejected">Rejected</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></label>
       <button className="company-secondary-button company-clear-filters" type="button" onClick={clearFilters}>Clear Filters</button>
     </section>

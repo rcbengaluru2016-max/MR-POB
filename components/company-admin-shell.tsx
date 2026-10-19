@@ -46,10 +46,10 @@ export function CompanyAdminShell({ children, accountName }: {
       </nav>
       <div className="company-sidebar-account">
         {logoutError && <p className="company-error" role="alert">{logoutError}</p>}
-        <Link href="/company/account-information" className={cn("company-account-link", pathname === "/company/account-information" && "is-active")} aria-label="Account Information" title="Account Information">
-          <span className="company-avatar">{initials}</span>
+        <Link href="/company/account-information" className={cn("company-account-link", pathname === "/company/account-information" && "is-active")} aria-current={pathname === "/company/account-information" ? "page" : undefined} aria-label="Account Information" title="Account Information">
+          {initials}
         </Link>
-        <button type="button" onClick={logout} className="company-logout">Log out</button>
+        <button type="button" onClick={logout} className="company-logout">Logout</button>
       </div>
     </aside>
     <main className="company-main">

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 type Employee = { id: string; designation: string; createdAt: string; reportingManagerId?: string; status?: "active" | "inactive" };
@@ -88,6 +87,5 @@ export function CompanyDashboard() {
         {range === "all" ? <div className="company-empty">Choose a date range to view the employee addition trend.</div> : filtered.length ? <div className="company-trend-chart">{hires.map((point) => <div className="company-trend-column" key={point.label} title={`${point.label}: ${point.count} added`}><span style={{ height: `${Math.max(3, point.count / Math.max(1, ...hires.map((item) => item.count)) * 100)}%` }} /><small>{point.label}</small></div>)}</div> : <div className="company-empty">No employee additions during this period.</div>}
       </section>
     </div>
-    <div className="company-dashboard-grid"><section className="company-panel"><div className="company-panel-heading"><div><h2>Organisational Flow</h2><p>Company team structure</p></div><Link href="/company/organisational-flow">Open</Link></div><div className="company-empty">{employees.length ? `${employees.length} employee records in your organisation.` : "Add the first employee to begin your hierarchy."}</div></section><section className="company-panel"><div className="company-panel-heading"><div><h2>Company workspace</h2><p>Quick links to your operating modules</p></div></div><div className="company-quick-links"><Link href="/company/product-uploading">Product Uploading</Link><Link href="/company/special-rates">Special Rates</Link><Link href="/company/order-status">Order Status</Link><Link href="/company/reports">Reports</Link></div></section></div>
   </div>;
 }
