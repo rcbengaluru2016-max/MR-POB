@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { FlaskConical, LogOut } from "lucide-react";
+import { FlaskConical } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { CompanyLogo } from "@/components/company-logo";
 import { mrInitials } from "@/lib/mr/profile";
@@ -47,9 +47,19 @@ export function MrWorkspaceShell({ children }: { children: ReactNode }) {
       <nav aria-label="MR workspace navigation" className="company-nav">
         {links.map((link) => <Link key={link.href} href={link.href} aria-current={pathname === link.href || pathname.startsWith(`${link.href}/`) ? "page" : undefined} className={cn("company-nav-link", (pathname === link.href || pathname.startsWith(`${link.href}/`)) && "is-active")}>{link.label}</Link>)}
       </nav>
-      <div className={cn("company-sidebar-account", "mr-account")}>
-        <Link href="/mr/account" className="company-avatar" aria-label="MR Account Details" title="Account Details" aria-current={pathname === "/mr/account" ? "page" : undefined}>{mrInitials(profile.name)}</Link>
-        <button type="button" onClick={() => void logout()} disabled={loggingOut} aria-busy={loggingOut} className="company-logout flex items-center gap-2"><LogOut size={15} aria-hidden="true" />{loggingOut ? "Logging out…" : "Logout"}</button>
+      <div className="company-sidebar-account">
+        <Link
+          href="/mr/account"
+          aria-label="Account Information"
+          aria-current={pathname === "/mr/account" ? "page" : undefined}
+          title="Account Information"
+          className={cn("company-account-link", pathname === "/mr/account" && "is-active")}
+        >
+          {mrInitials(profile.name)}
+        </Link>
+        <button type="button" onClick={() => void logout()} disabled={loggingOut} aria-busy={loggingOut} className="company-logout">
+          {loggingOut ? "Logging out…" : "Logout"}
+        </button>
       </div>
     </aside>
     <main id="mr-content" className="company-main" tabIndex={-1}>
@@ -57,7 +67,7 @@ export function MrWorkspaceShell({ children }: { children: ReactNode }) {
         {logoutError && <p className="company-error-banner" role="alert">{logoutError}</p>}
         {pathname !== "/mr/account" && <header className="mr-topbar"><div><p className="company-eyebrow">MR workspace</p><p className="mt-1 text-sm font-semibold">{profile.name}<span className="ml-2 text-xs font-normal text-muted">{profile.territory}</span></p></div><span className="mr-demo"><FlaskConical size={13} aria-hidden="true" />Demo preview</span></header>}
         {children}
-        <footer className="mr-footer">Demo data only. Orders and drafts stay in this preview and reset when you refresh. <button type="button" onClick={() => void logout()} disabled={loggingOut} aria-busy={loggingOut} className="font-semibold text-brand hover:underline">{loggingOut ? "Logging out…" : "Logout"}</button></footer>
+        <footer className="mr-footer">Demo data only. Orders and drafts stay in this preview and reset when you refresh.</footer>
       </div>
     </main>
   </div>;

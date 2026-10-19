@@ -2,7 +2,6 @@
 & { font-size: 14px; }
 & :is(a, button, input, select):focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
 & .mr-sidebar { min-height: 100svh; }
-& .mr-account { gap: 14px; }
 .mr-profile { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .mr-profile small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
 .mr-topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid var(--line); margin-bottom: 28px; padding-bottom: 18px; }
@@ -76,7 +75,7 @@
 .mr-history time, .mr-history p { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; }
 .mr-footer { margin-top: 26px; color: var(--muted); font-size: 11px; line-height: 1.6; }
 @media (max-width: 1000px) { .mr-customerDetails { grid-template-columns: repeat(2, minmax(0, 1fr)); } .mr-customerGrid, .mr-details { grid-template-columns: 1fr; } .mr-filters { grid-template-columns: minmax(0, 1fr) 200px; } }
-@media (max-width: 760px) { & .mr-sidebar { position: relative; min-height: 0; } & .mr-account { position: absolute; top: 18px; right: 16px; display: grid; padding-top: 0; } & .mr-account .company-logout { display: none; } & .mr-brand { height: 50px; min-height: 50px; } & .mr-brand > span { height: 50px; width: 150px; aspect-ratio: auto; } .mr-topbar { margin-bottom: 20px; padding-bottom: 14px; } .mr-productRow { grid-template-columns: minmax(0, 1fr) 85px; } .mr-productRow label { grid-column: 1; max-width: 90px; } .mr-productRow button { align-self: end; margin-top: 0; } }
+@media (max-width: 760px) { & .mr-sidebar { position: relative; min-height: 0; } & .mr-brand { height: 50px; min-height: 50px; } & .mr-brand > span { height: 50px; width: 150px; aspect-ratio: auto; } .mr-topbar { margin-bottom: 20px; padding-bottom: 14px; } .mr-productRow { grid-template-columns: minmax(0, 1fr) 85px; } .mr-productRow label { grid-column: 1; max-width: 90px; } .mr-productRow button { align-self: end; margin-top: 0; } }
 @media (max-width: 540px) { .mr-filters { grid-template-columns: 1fr; } & .mr-kpi { padding-right: 13px; padding-top: 35px; } .mr-kpiIcon { width: 16px; height: 16px; top: 12px; right: 12px; } .mr-cardHeading { flex-wrap: wrap; } .mr-totals { padding: 16px; } }
 
 }
