@@ -95,7 +95,7 @@ function masterTitle(kind: Kind) {
   return kind === "company" ? "Company" : `${kind[0].toUpperCase()}${kind.slice(1)}`;
 }
 
-export function ApprovedRegistrationDetails({ kind, id }: { kind: Kind; id: string }) {
+export function ApprovedRegistrationDetails({ kind, id, basePath = "/super-admin" }: { kind: Kind; id: string; basePath?: string }) {
   const [data, setData] = useState<SafeDetails | null>(null);
   const [error, setError] = useState("");
   const [erpError, setErpError] = useState("");
@@ -173,10 +173,10 @@ export function ApprovedRegistrationDetails({ kind, id }: { kind: Kind; id: stri
     setAccountActionError("");
     setAccountActionNotice("");
     try {
-      const response = await fetch("/api/super-admin/accounts", {
-        method: "POST",
+      const response = await fetch(basePath === "/admin" ? "/api/admin/accounts" : "/api/super-admin/accounts", {
+        method: basePath === "/admin" ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "status", username: data.account.username, status: nextStatus }),
+        body: JSON.stringify(basePath === "/admin" ? { username: data.account.username, status: nextStatus } : { action: "status", username: data.account.username, status: nextStatus }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Unable to update account status.");
@@ -208,7 +208,7 @@ export function ApprovedRegistrationDetails({ kind, id }: { kind: Kind; id: stri
   return (
     <div className="space-y-4 sm:space-y-5">
       <header className="flex flex-wrap items-center gap-3">
-        <Link href={`/super-admin/registrations/${kind}`} className="inline-flex min-h-10 items-center rounded-lg border border-line bg-white px-3 text-sm font-semibold text-foreground shadow-sm transition hover:border-brand hover:text-brand">← Back</Link>
+        <Link href={`${basePath}/registrations/${kind}`} className="inline-flex min-h-10 items-center rounded-lg border border-line bg-white px-3 text-sm font-semibold text-foreground shadow-sm transition hover:border-brand hover:text-brand">← Back</Link>
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">{masterTitle(kind)}</h1>
         <span aria-hidden="true" className="text-muted">-</span>
         <span className="font-mono text-sm font-semibold text-foreground">{master.code}</span>

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { getStore } from "@/lib/server/store";
-import { isSuperAdminReady } from "@/lib/server/super-admin";
+import { isAdminSession } from "@/lib/server/super-admin";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, context: RouteContext) {
-  if (!(await isSuperAdminReady())) {
+  if (!(await isAdminSession())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

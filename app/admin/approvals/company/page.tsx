@@ -1,5 +1,5 @@
-import { RegistrationTable } from "@/components/admin/registration-table";
+import { redirect } from "next/navigation";
 
-export default function CompanyApprovalsPage() {
-  return <RegistrationTable kind="company" title="Company pending / verification" />;
+export default function AdminCompanyApprovalsPage() {
+  redirect("/admin/approvals");
 }

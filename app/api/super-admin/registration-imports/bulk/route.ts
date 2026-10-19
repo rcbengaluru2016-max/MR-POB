@@ -5,7 +5,7 @@ import { createSalt, hashPassword } from "@/lib/crypto";
 import { encryptUploadFile } from "@/lib/server/upload-file";
 import { CREDIT_DAY_VALUES, CUSTOMER_PAYMENT_METHODS, CUSTOMER_TYPES, MAX_FILE_BYTES, PATIENT_PAYMENT_METHODS, REGISTRATION_PREFIX, ALLOWED_FILE_TYPES } from "@/lib/constants";
 import { toUploadedFile } from "@/lib/server/files";
-import { isSuperAdminReady } from "@/lib/server/super-admin";
+import { isAdminSession } from "@/lib/server/super-admin";
 import { SUPER_ADMIN_EMAIL } from "@/lib/server/super-admin-config";
 import { getSession } from "@/lib/server/session";
 import { nextId, persistStore, refreshStore, transactStore } from "@/lib/server/store";
@@ -105,7 +105,7 @@ async function getRows(workbookFile: File, kind: Kind, documents: File[]) {
 }
 
 export async function GET(request: Request) {
-  if (!(await isSuperAdminReady())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await isAdminSession())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const kind = new URL(request.url).searchParams.get("kind") as Kind | null;
   if (!kind || !kinds.includes(kind)) return NextResponse.json({ error: "Choose a valid registration category." }, { status: 400 });
   const workbook = new ExcelJS.Workbook();
@@ -128,7 +128,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!(await isSuperAdminReady())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await isAdminSession())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   let activeUploadId: string | undefined;
   try {
     const form = await request.formData();

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/server/session";
 import { getStore, persistStore } from "@/lib/server/store";
-import { isAdminSession } from "@/lib/server/super-admin";
+import { isAdminSession, isSuperAdminReady } from "@/lib/server/super-admin";
 import { recordSecurityEvent } from "@/lib/server/security-audit";
 import { isUserType } from "@/lib/types";
 
@@ -13,7 +13,7 @@ const accountStatusSchema = z.object({
 
 export async function GET() {
   const session = await getSession();
-  if (!session || !(await isAdminSession(session))) {
+  if (!session || session.userType !== "super_admin" || !(await isSuperAdminReady())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const store = await getStore();
@@ -49,7 +49,10 @@ export async function PATCH(request: Request) {
   const account = store.accounts.find((item) => item.username === parsed.data.username);
   if (!account) return NextResponse.json({ error: "Account not found" }, { status: 404 });
   if (!isUserType(account.userType)) return NextResponse.json({ error: "Account not found" }, { status: 404 });
-  if (account.userType === "super_admin" && session?.userType !== "super_admin") {
+  if (session.userType === "admin" && (account.userType === "admin" || account.userType === "super_admin")) {
+    return NextResponse.json({ error: "Admins cannot manage Zenex Admin or Super Admin accounts." }, { status: 403 });
+  }
+  if (account.userType === "super_admin" && session.userType !== "super_admin") {
     return NextResponse.json({ error: "Only the Super Admin can change this account." }, { status: 403 });
   }
   if (account.username.toLowerCase() === session.username.toLowerCase()) {

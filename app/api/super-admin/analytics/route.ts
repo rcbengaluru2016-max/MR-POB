@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { RegistrationRecord, RegistrationStatus } from "@/lib/types";
 import { getStore } from "@/lib/server/store";
-import { isSuperAdminReady } from "@/lib/server/super-admin";
+import { isAdminSession } from "@/lib/server/super-admin";
 
 const kinds = ["customer", "company", "patient"] as const;
 const statuses: RegistrationStatus[] = ["pending_verification", "approved", "rejected"];
@@ -25,7 +25,7 @@ function percentChange(current: number, previous: number) {
 }
 
 export async function GET(request: Request) {
-  if (!(await isSuperAdminReady())) {
+  if (!(await isAdminSession())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

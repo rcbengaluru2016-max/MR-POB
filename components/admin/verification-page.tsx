@@ -67,15 +67,15 @@ function currentWorkflowStep(record: RecordShape) {
   return 1;
 }
 
-export function VerificationPage({ expectedKind, superAdminFlow = false }: { expectedKind?: Kind; superAdminFlow?: boolean }) {
+export function VerificationPage({ expectedKind, superAdminFlow = false, returnPath = "/super-admin/approvals" }: { expectedKind?: Kind; superAdminFlow?: boolean; returnPath?: string }) {
   return (
     <Suspense fallback={<p className="text-sm text-muted">Loading registration details…</p>}>
-      <VerificationContent expectedKind={expectedKind} superAdminFlow={superAdminFlow} />
+      <VerificationContent expectedKind={expectedKind} superAdminFlow={superAdminFlow} returnPath={returnPath} />
     </Suspense>
   );
 }
 
-function VerificationContent({ expectedKind, superAdminFlow }: { expectedKind?: Kind; superAdminFlow: boolean }) {
+function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { expectedKind?: Kind; superAdminFlow: boolean; returnPath: string }) {
   const params = useParams<{ id: string }>();
   const [record, setRecord] = useState<RecordShape | null>(null);
   const [error, setError] = useState("");
@@ -157,7 +157,7 @@ function VerificationContent({ expectedKind, superAdminFlow }: { expectedKind?: 
     <div className="space-y-4 sm:space-y-5">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          {superAdminFlow ? <Link href="/super-admin/approvals" className="mb-2 inline-flex text-sm font-medium text-brand hover:underline">← Registration Approvals</Link> : null}
+          {superAdminFlow ? <Link href={returnPath} className="mb-2 inline-flex text-sm font-medium text-brand hover:underline">← Registration Approvals</Link> : null}
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold text-foreground">Registration Details</h1>
             <span className="rounded-full bg-panel px-3 py-1 text-xs font-semibold text-brand">{kindLabel}</span>
