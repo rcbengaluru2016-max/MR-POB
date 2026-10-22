@@ -75,7 +75,7 @@ The production server uses `http://localhost:3000` by default.
 1. User registers as Customer, Company, or Patient.
 2. Status becomes Pending Verification and a Registration ID is issued.
 3. Admin verifies documents, then approves or rejects (reject reason required).
-4. Approval automatically creates the matching Master, generates `ZNX-…` Master Code, creates the user account with that code as username, activates it, and logs the activation email.
+4. Approval automatically creates the matching Master, generates `ZNX-…` Master Code, creates the user account with that code as username, and activates it. WhatsApp activation messages are not sent until a messaging provider is configured.
 
 ## Scripts
 
