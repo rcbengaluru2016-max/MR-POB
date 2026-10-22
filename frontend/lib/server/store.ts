@@ -21,7 +21,7 @@ import type {
 import { LEGACY_SUPER_ADMIN_EMAILS, SUPER_ADMIN_EMAIL } from "@/lib/server/super-admin-config";
 import { encryptMfaSecret, isEncryptedMfaSecret } from "@/lib/server/mfa-secret";
 
-const DATA_DIR = path.join(process.cwd(), ".data");
+const DATA_DIR = path.resolve(process.cwd(), "..", ".data");
 const STORE_PATH = path.join(DATA_DIR, "store.json");
 
 export type AppStore = {
