@@ -1,0 +1,8 @@
+  backup/frontend-before-cleanup               [m 75e3528 [[34morigin/backup/frontend-before-cleanup[m] Merge pull request #7 from rcbengaluru2016-max/main
+* [32mfrontend                                     [m b61cc3f [[34morigin/frontend[m] chore(frontend): retain only frontend directory in branch
+  main                                         [m 7f888ee [[34morigin/main[m: behind 2] Merge pull request #4 from rcbengaluru2016-max/chore/restructure-monorepo
+  [31mremotes/origin/HEAD                          [m -> origin/main
+  [31mremotes/origin/backup/frontend-before-cleanup[m 75e3528 Merge pull request #7 from rcbengaluru2016-max/main
+  [31mremotes/origin/chore/restructure-monorepo    [m 2e39f43 chore: update import paths in next-env.d.ts and add package.json for workspace configuration
+  [31mremotes/origin/frontend                      [m b61cc3f chore(frontend): retain only frontend directory in branch
+  [31mremotes/origin/main                          [m 677b584 Merge pull request #6 from rcbengaluru2016-max/frontend
