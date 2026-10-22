@@ -105,8 +105,6 @@ const customerRegistrationFields = {
   customerName: z.string().trim().min(2, "Owner name is required"),
   mobile,
   email: z.string().trim().email("Enter a valid email address").optional().or(z.literal("")),
-  password,
-  confirmPassword: z.string(),
   businessName: z.string().trim().min(2, "Name is required"),
   customerType: z.enum(CUSTOMER_TYPES),
   addressLine1: z.string().trim().min(3, "Address Line 1 is required"),
@@ -126,12 +124,9 @@ const customerRegistrationFields = {
   }),
 };
 
-export const customerRegistrationFieldsSchema = z
-  .object(customerRegistrationFields)
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  });
+export const customerRegistrationFieldsSchema = z.object(customerRegistrationFields);
+
+export const customerActivationProfileSchema = z.object({ ...customerRegistrationFields, password, confirmPassword: z.string() }).refine((data) => data.password === data.confirmPassword, { message: "Passwords do not match", path: ["confirmPassword"] });
 
 export const customerRegistrationSchema = z
   .object({
@@ -142,10 +137,6 @@ export const customerRegistrationSchema = z
     gstCertificate: requiredFile("GST certificate"),
     shopOutside: requiredFile("Shop photo — outside"),
     shopInside: requiredFile("Shop photo — inside"),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
   });
 
 const companyRegistrationFields = {
@@ -185,8 +176,6 @@ const patientRegistrationFields = {
     .email("Enter a valid email address")
     .optional()
     .or(z.literal("")),
-  password,
-  confirmPassword: z.string(),
   gender: z.enum(["Female", "Male", "Other", "Prefer not to say"]).optional().or(z.literal("")),
   address: z.string().trim().min(8, "Address is required"),
   paymentMethod: z.enum(PATIENT_PAYMENT_METHODS),
@@ -195,21 +184,12 @@ const patientRegistrationFields = {
   }),
 };
 
-export const patientRegistrationFieldsSchema = z
-  .object(patientRegistrationFields)
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  });
+export const patientRegistrationFieldsSchema = z.object(patientRegistrationFields);
 
 export const patientRegistrationSchema = z
   .object({
     ...patientRegistrationFields,
     idProof: optionalFile("ID proof"),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
   });
 
 export const rejectSchema = z.object({

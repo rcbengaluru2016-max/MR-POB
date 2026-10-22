@@ -45,9 +45,9 @@ function RegistrationSuccess({ title }: { title: string }) {
       <div className="space-y-5">
         <StatusBadge value="pending_verification" />
         <p className="text-base leading-7 text-muted">
-          After approval, you will receive an email containing your Master Code username. The
-          password you created during registration will never be sent via email and will remain
-          inaccessible to backend staff.
+          After approval, your Master Code username will be shared through a WhatsApp activation
+          message when messaging delivery is configured. Your password will never be included in a
+          message and remains inaccessible to backend staff.
         </p>
       </div>
     </RegisterShell>

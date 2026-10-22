@@ -25,8 +25,6 @@ export function PatientRegistrationForm({ adminMode = false, onCreated }: { admi
       patientName: "",
       mobile: "",
       email: "",
-      password: "",
-      confirmPassword: "",
       address: "",
     },
   });
@@ -86,12 +84,6 @@ export function PatientRegistrationForm({ adminMode = false, onCreated }: { admi
             <option value="" disabled>Select payment method</option>
             {PATIENT_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{method}</option>)}
           </SelectInput>
-        </Field>
-        <Field label="Password *" error={form.formState.errors.password?.message}>
-          <TextInput type="password" {...form.register("password")} />
-        </Field>
-        <Field label="Confirm Password *" error={form.formState.errors.confirmPassword?.message}>
-          <TextInput type="password" {...form.register("confirmPassword")} />
         </Field>
         <div className="md:col-span-2">
           <Field label="Address *" error={form.formState.errors.address?.message}>

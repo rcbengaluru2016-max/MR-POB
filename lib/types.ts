@@ -25,8 +25,6 @@ export type CustomerRegistrationInput = {
   customerName: string;
   mobile: string;
   email?: string;
-  password: string;
-  confirmPassword: string;
   businessName: string;
   customerType: string;
   address?: string;
@@ -72,8 +70,6 @@ export type PatientRegistrationInput = {
   patientName: string;
   mobile: string;
   email?: string;
-  password: string;
-  confirmPassword: string;
   gender: string;
   address: string;
   termsAccepted: boolean;

@@ -7,7 +7,7 @@ export default function ForgotPasswordPage() {
   return (
     <AuthShell
       title="Password recovery"
-      subtitle="Enter the email used at registration. We never send your existing password by email."
+      subtitle="Enter the email associated with your account. Your existing password is never included in a message."
     >
       <ForgotPasswordForm />
     </AuthShell>

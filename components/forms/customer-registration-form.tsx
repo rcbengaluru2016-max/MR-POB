@@ -25,8 +25,6 @@ export function CustomerRegistrationForm({ adminMode = false, onCreated }: { adm
       customerName: "",
       mobile: "",
       email: "",
-      password: "",
-      confirmPassword: "",
       businessName: "",
       addressLine1: "",
       addressLine2: "",
@@ -135,8 +133,6 @@ export function CustomerRegistrationForm({ adminMode = false, onCreated }: { adm
         <Field label="Owner *" error={form.formState.errors.customerName?.message}><TextInput {...form.register("customerName")} /></Field>
         <Field label="Mobile Number *" error={form.formState.errors.mobile?.message}><TextInput inputMode="numeric" {...form.register("mobile")} /></Field>
         <Field label="Email ID" error={form.formState.errors.email?.message}><TextInput type="email" {...form.register("email")} /></Field>
-        <Field label="Password *" error={form.formState.errors.password?.message}><TextInput type="password" {...form.register("password")} /></Field>
-        <Field label="Confirm Password *" error={form.formState.errors.confirmPassword?.message}><TextInput type="password" {...form.register("confirmPassword")} /></Field>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">

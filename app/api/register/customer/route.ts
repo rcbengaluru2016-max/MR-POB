@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomBytes } from "node:crypto";
 import { createSalt, hashPassword } from "@/lib/crypto";
 import { optionalUpload, requiredUpload, toUploadedFile } from "@/lib/server/files";
 import { nextRegistrationId, submitRegistration } from "@/lib/server/workflow";
@@ -13,8 +14,6 @@ export async function POST(request: Request) {
       customerName: value("customerName"),
       mobile: value("mobile"),
       email: value("email"),
-      password: value("password"),
-      confirmPassword: value("confirmPassword"),
       businessName: value("businessName"),
       customerType: value("customerType"),
       addressLine1: value("addressLine1"),
@@ -52,7 +51,7 @@ export async function POST(request: Request) {
       customerName: values.customerName,
       mobile: values.mobile,
       email: values.email || "",
-      passwordHash: await hashPassword(values.password, salt),
+      passwordHash: await hashPassword(randomBytes(32).toString("base64url"), salt),
       passwordSalt: salt,
       businessName: values.businessName,
       customerType: values.customerType,

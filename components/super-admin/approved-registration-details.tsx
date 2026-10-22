@@ -11,7 +11,7 @@ type SafeDetails = {
   registration: Record<string, unknown> & { id: string; kind: Kind; status: string; submittedAt: string; files?: Record<string, { name: string; type: string; size: number; dataUrl: string }> };
   master: Record<string, unknown> & { code: string; status: string; createdAt: string; approvalDate: string };
   account: null | { username: string; displayName: string; email?: string; userType: string; status: string; createdAt: string; lastLoginAt?: string };
-  activationEmail: null | { recipient: string; status: string; sentAt: string; subject: string };
+  activationMessage: null | { recipient: string; status: string; sentAt: string };
 };
 type ErpForm = Record<string, string>;
 type Option = { value: string; label: string };
@@ -48,7 +48,7 @@ const progressSteps = [
   "Approved",
   "Master Code Generated",
   "Account Activated",
-  "Email Sent",
+  "Message Sent",
 ];
 
 function display(value: unknown) {
@@ -181,7 +181,7 @@ export function ApprovedRegistrationDetails({ kind, id, basePath = "/super-admin
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Unable to update account status.");
       setData((current) => current?.account ? { ...current, account: { ...current.account, status: nextStatus } } : current);
-      setAccountActionNotice(`Account ${nextStatus === "locked" ? "locked" : "unlocked"} successfully.`);
+      setAccountActionNotice(`Account set to ${nextStatus === "locked" ? "Inactive" : "Active"}.`);
       setAccountDialogOpen(false);
     } catch (reason) {
       setAccountActionError(reason instanceof Error ? reason.message : "Unable to update account status.");
@@ -193,7 +193,7 @@ export function ApprovedRegistrationDetails({ kind, id, basePath = "/super-admin
   if (error) return <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-danger" role="alert">{error}</p>;
   if (!data) return <p className="text-sm text-muted">Loading approved registration…</p>;
 
-  const { registration, master, account, activationEmail } = data;
+  const { registration, master, account, activationMessage } = data;
   const form = erpForm ?? initialErpForm(master);
   const files = registration.files ?? {};
   const timeLabels = [
@@ -202,7 +202,7 @@ export function ApprovedRegistrationDetails({ kind, id, basePath = "/super-admin
     formatDateTime(typeof registration.decidedAt === "string" ? registration.decidedAt : master.approvalDate),
     formatDateTime(master.createdAt),
     account ? formatDateTime(account.createdAt) : "Not available",
-    activationEmail ? formatDateTime(activationEmail.sentAt) : "Not sent",
+    activationMessage ? formatDateTime(activationMessage.sentAt) : "Not sent",
   ];
 
   return (
@@ -218,15 +218,15 @@ export function ApprovedRegistrationDetails({ kind, id, basePath = "/super-admin
       <section aria-label="Registration progress" className="overflow-x-auto rounded-2xl border border-line bg-white px-4 py-5 shadow-sm sm:px-6">
         <ol className="grid min-w-[680px] grid-cols-6">
           {progressSteps.map((step, index) => {
-            const isEmailMissing = index === 5 && !activationEmail;
-            const complete = !isEmailMissing;
+            const isMessageMissing = index === 5 && !activationMessage;
+            const complete = !isMessageMissing;
             return (
               <li key={step} className="relative flex flex-col items-center px-1 text-center">
-                {index < progressSteps.length - 1 ? <span aria-hidden="true" className={cn("absolute left-1/2 top-4 h-[3px] w-full", activationEmail || index < progressSteps.length - 2 ? "bg-emerald-700" : "bg-slate-200")} /> : null}
+                {index < progressSteps.length - 1 ? <span aria-hidden="true" className={cn("absolute left-1/2 top-4 h-[3px] w-full", activationMessage || index < progressSteps.length - 2 ? "bg-emerald-700" : "bg-slate-200")} /> : null}
                 <span className={cn("relative z-10 inline-flex size-8 items-center justify-center rounded-full border-2 text-xs font-bold", complete ? "border-emerald-700 bg-emerald-700 text-white" : "border-slate-200 bg-white text-muted")}>
                   {complete ? "✓" : index + 1}
                 </span>
-                <span className={cn("mt-2 max-w-28 text-[11px] leading-4 sm:text-xs", complete ? "font-medium text-foreground" : "text-muted")}>{isEmailMissing ? "Email Not Sent" : step}</span>
+                <span className={cn("mt-2 max-w-28 text-[11px] leading-4 sm:text-xs", complete ? "font-medium text-foreground" : "text-muted")}>{isMessageMissing ? "Message Not Sent" : step}</span>
                 {timeLabels[index] ? <span className="mt-1 text-[10px] text-muted">{timeLabels[index]}</span> : null}
               </li>
             );
@@ -272,8 +272,8 @@ export function ApprovedRegistrationDetails({ kind, id, basePath = "/super-admin
           <h2 className="text-base font-semibold text-foreground">Login Account</h2>
           {account ? <>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <button type="button" onClick={() => { setAccountActionError(""); setAccountDialogOpen(true); }} className={`min-h-10 rounded-lg border px-4 text-sm font-semibold transition ${accountIsActive(account.status) ? "border-red-200 bg-white text-red-700 hover:bg-red-50" : "border-brand bg-brand text-white hover:bg-brand/90"}`}>
-                {accountIsActive(account.status) ? "Lock Account" : "Unlock Account"}
+              <button type="button" aria-label={accountIsActive(account.status) ? "Account is Active. Change status to Inactive" : "Account is Inactive. Change status to Active"} onClick={() => { setAccountActionError(""); setAccountDialogOpen(true); }} className={`min-h-10 rounded-lg border px-4 text-sm font-semibold transition ${accountIsActive(account.status) ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100" : "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"}`}>
+                {accountIsActive(account.status) ? "Active" : "Inactive"}
               </button>
             </div>
             {accountActionNotice ? <p className="mt-2 text-sm text-emerald-700" role="status">{accountActionNotice}</p> : null}
@@ -289,20 +289,20 @@ export function ApprovedRegistrationDetails({ kind, id, basePath = "/super-admin
         </section>
 
         <section className="rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-6">
-          <h2 className="text-base font-semibold text-foreground">Account Activation Email</h2>
-          {activationEmail ? <div className="mt-3 rounded-xl border border-line bg-background p-4">
-            <dl className="grid gap-3 sm:grid-cols-2"><div><dt className="text-xs text-muted">Recipient</dt><dd className="mt-1 break-all text-sm font-medium text-foreground">{activationEmail.recipient}</dd></div><div><dt className="text-xs text-muted">Status</dt><dd className="mt-1"><span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-bold uppercase text-emerald-700">{activationEmail.status} ✓</span></dd></div></dl>
+          <h2 className="text-base font-semibold text-foreground">Account Activation Message</h2>
+          {activationMessage ? <div className="mt-3 rounded-xl border border-line bg-background p-4">
+            <dl className="grid gap-3 sm:grid-cols-2"><div><dt className="text-xs text-muted">Registered mobile number</dt><dd className="mt-1 break-all text-sm font-medium text-foreground">{activationMessage.recipient}</dd></div><div><dt className="text-xs text-muted">Status</dt><dd className="mt-1"><span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-bold uppercase text-emerald-700">{activationMessage.status} ✓</span></dd></div></dl>
             <ul className="mt-4 list-disc space-y-1 pl-4 text-sm text-foreground"><li>Account activated</li><li>Master Code and username</li><li>Login link and instructions</li><li>Password recovery instructions</li></ul>
             <p className="mt-2 text-xs text-muted">The password is never included.</p>
-            <p className="mt-2 text-[11px] text-muted">Sent {formatDateTime(activationEmail.sentAt)}</p>
-          </div> : <div className="mt-3 rounded-xl border border-dashed border-line bg-background p-4"><span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold uppercase text-muted">Not sent</span><p className="mt-3 text-sm text-muted">No activation email was recorded for this registration.</p></div>}
+            <p className="mt-2 text-[11px] text-muted">Sent {formatDateTime(activationMessage.sentAt)}</p>
+          </div> : <div className="mt-3 rounded-xl border border-dashed border-line bg-background p-4"><span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold uppercase text-muted">Not sent</span><p className="mt-3 text-sm text-muted">No WhatsApp activation message has been sent. WhatsApp delivery is not configured.</p></div>}
         </section>
       </div>
       <ConfirmDialog
         open={accountDialogOpen && Boolean(account)}
-        title={account && !accountIsActive(account.status) ? "Unlock this account?" : "Lock this account?"}
-        description={account && !accountIsActive(account.status) ? "The user will be able to sign in again after this change." : "The user will be prevented from signing in until the account is unlocked."}
-        confirmLabel={account && !accountIsActive(account.status) ? "Unlock Account" : "Lock Account"}
+        title={account && !accountIsActive(account.status) ? "Set this account to Active?" : "Set this account to Inactive?"}
+        description={account && !accountIsActive(account.status) ? "The user will be able to sign in again after this change." : "The user will no longer be able to sign in after this change."}
+        confirmLabel={account && !accountIsActive(account.status) ? "Set Active" : "Set Inactive"}
         danger={!account || accountIsActive(account.status)}
         busy={accountActionBusy}
         error={accountActionError}

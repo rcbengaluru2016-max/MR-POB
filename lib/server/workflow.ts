@@ -205,6 +205,7 @@ export async function approveRegistration(id: string, actor: string) {
     status: "active",
     createdAt: new Date().toISOString(),
     displayName: displayName(record),
+    passwordChangeRequired: record.kind === "customer" || record.kind === "patient",
   };
   store.accounts.unshift(account);
   addAudit(store, {
@@ -214,32 +215,6 @@ export async function approveRegistration(id: string, actor: string) {
     masterCode: code,
     detail: "Master Code set as username; account activated",
   });
-
-  if (record.email) {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    store.emails.unshift({
-      id: crypto.randomUUID(),
-      at: new Date().toISOString(),
-      to: record.email,
-      subject: "Zenex International account activated",
-      body: [
-        `Hello ${displayName(record)},`,
-        "Your registration has been approved and your account is active.",
-        `Username / Master Code: ${code}`,
-        `Login: ${appUrl}/login`,
-        "Use the password you created during registration.",
-        "If you forget your password, use Forgot Password on the login screen.",
-      ].join("\n"),
-      status: "sent",
-    });
-    addAudit(store, {
-      actor: "system",
-      action: "activation_email_sent",
-      registrationId: id,
-      masterCode: code,
-      detail: record.email,
-    });
-  }
 
   await persistStore(store);
   return { record, master, account };

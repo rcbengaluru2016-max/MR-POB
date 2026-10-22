@@ -28,7 +28,7 @@ const workflowSteps = [
   "Approved",
   "Master Code Generated",
   "Account Activated",
-  "Email Sent",
+  "Message Not Sent",
 ];
 
 const documentLabels: Record<string, string> = {
@@ -62,7 +62,7 @@ function detailEntries(record: RecordShape): [string, string][] {
 }
 
 function currentWorkflowStep(record: RecordShape) {
-  if (record.status === "approved") return record.email ? 6 : 5;
+  if (record.status === "approved") return 5;
   if (record.status === "rejected") return 1;
   return 1;
 }
@@ -231,7 +231,7 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
       <ConfirmDialog
         open={approveOpen}
         title="Approve registration"
-        description="This will create the respective Master, generate a Master Code username, activate the account, and trigger the activation email."
+        description="This will create the respective Master, generate a Master Code username, and activate the account. WhatsApp notifications are not sent because delivery is not configured."
         confirmLabel="Approve Registration"
         busy={isDeciding}
         error={approveOpen ? error : undefined}

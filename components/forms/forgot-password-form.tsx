@@ -30,12 +30,12 @@ export function ForgotPasswordForm() {
       });
       const data = await response.json();
       if (!response.ok) {
-        setError(data.error ?? "Unable to send recovery instructions.");
+        setError(data.error ?? "Unable to request recovery instructions.");
         return;
       }
       setMessage(data.message);
     } catch {
-      setError("Unable to send recovery instructions. Check your connection and try again.");
+      setError("Unable to request recovery instructions. Check your connection and try again.");
     }
   }
 
@@ -47,7 +47,7 @@ export function ForgotPasswordForm() {
       {message ? <p className="text-sm text-success" role="status">{message}</p> : null}
       {error ? <p className="text-sm text-danger" role="alert">{error}</p> : null}
       <Button className="w-full" disabled={form.formState.isSubmitting}>
-        Send recovery instructions
+        Request recovery instructions
       </Button>
       <Link className="block text-center text-sm font-medium text-brand hover:underline" href="/login">
         Back to login

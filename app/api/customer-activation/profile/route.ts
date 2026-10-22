@@ -6,7 +6,7 @@ import { optionalUpload, requiredUpload } from "@/lib/server/files";
 import { getSessionSecret } from "@/lib/server/session-token";
 import { refreshStore, transactStore } from "@/lib/server/store";
 import type { StoredCustomerRegistration } from "@/lib/types";
-import { customerRegistrationFieldsSchema } from "@/lib/validation";
+import { customerActivationProfileSchema } from "@/lib/validation";
 
 const COOKIE = "zenex_customer_activation";
 const digest = (value: string) => createHmac("sha256", getSessionSecret()).update(value).digest("hex");
@@ -38,7 +38,7 @@ export async function PATCH(request: Request) {
   try {
     const form = await request.formData();
     const value = (key: string) => String(form.get(key) ?? "");
-    const parsed = customerRegistrationFieldsSchema.safeParse({
+    const parsed = customerActivationProfileSchema.safeParse({
       customerName: value("customerName"), mobile: value("mobile"), email: value("email"), password: value("password"), confirmPassword: value("confirmPassword"),
       businessName: value("businessName"), customerType: value("customerType"), addressLine1: value("addressLine1"), addressLine2: value("addressLine2"), addressLine3: value("addressLine3"), addressLine4: value("addressLine4"),
       pinCode: value("pinCode"), dlNumber1: value("dlNumber1"), dlNumber2: value("dlNumber2"), dlNumber3: value("dlNumber3"), fssaiNumber: value("fssaiNumber"), gstNumber: value("gstNumber"), creditDays: value("creditDays"), paymentMethod: value("paymentMethod"), termsAccepted: true,

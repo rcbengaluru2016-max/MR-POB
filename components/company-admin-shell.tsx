@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { Menu, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { CompanyLogo } from "@/components/company-logo";
 import { cn } from "@/lib/utils";
@@ -21,6 +22,7 @@ export function CompanyAdminShell({ children, accountName }: {
   const pathname = usePathname();
   const router = useRouter();
   const [logoutError, setLogoutError] = useState("");
+  const [navigationOpen, setNavigationOpen] = useState(false);
 
   async function logout() {
     setLogoutError("");
@@ -36,12 +38,15 @@ export function CompanyAdminShell({ children, accountName }: {
 
   const initials = accountName.trim().split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "CA";
   return <div className="company-app">
-    <aside className="company-sidebar">
-      <Link href="/company/dashboard" className="company-brand" aria-label="Company dashboard"><CompanyLogo className="w-full max-w-52" /></Link>
-      <nav aria-label="Company workspace navigation" className="company-nav">
+    <aside className="company-sidebar company-sidebar-responsive">
+      <div className="company-sidebar-header">
+        <Link href="/company/dashboard" className="company-brand" aria-label="Company dashboard"><CompanyLogo className="w-full max-w-52" /></Link>
+        <button type="button" className="company-menu-button" aria-label={navigationOpen ? "Close navigation" : "Open navigation"} aria-expanded={navigationOpen} aria-controls="company-workspace-navigation" onClick={() => setNavigationOpen((open) => !open)}>{navigationOpen ? <X size={19} aria-hidden="true" /> : <Menu size={19} aria-hidden="true" />}</button>
+      </div>
+      <nav id="company-workspace-navigation" aria-label="Company workspace navigation" className={cn("company-nav", navigationOpen && "is-open")}>
         {links.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
-          return <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={cn("company-nav-link", active && "is-active")}>{item.label}</Link>;
+          return <Link key={item.href} href={item.href} onClick={() => setNavigationOpen(false)} aria-current={active ? "page" : undefined} className={cn("company-nav-link", active && "is-active")}>{item.label}</Link>;
         })}
       </nav>
       <div className="company-sidebar-account">
