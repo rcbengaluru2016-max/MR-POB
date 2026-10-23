@@ -19,14 +19,12 @@ export function MrWorkspaceShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { profile } = useMrWorkspace();
-  const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
   const logoutInFlight = useRef(false);
 
   async function logout() {
     if (logoutInFlight.current) return;
     logoutInFlight.current = true;
-    setLoggingOut(true);
     setLogoutError("");
     try {
       const response = await fetch("/api/auth/logout", { method: "POST" });
@@ -35,7 +33,6 @@ export function MrWorkspaceShell({ children }: { children: ReactNode }) {
       router.refresh();
     } catch {
       logoutInFlight.current = false;
-      setLoggingOut(false);
       setLogoutError("Unable to log out. Please try again.");
     }
   }
@@ -57,8 +54,8 @@ export function MrWorkspaceShell({ children }: { children: ReactNode }) {
         >
           {mrInitials(profile.name)}
         </Link>
-        <button type="button" onClick={() => void logout()} disabled={loggingOut} aria-busy={loggingOut} className="company-logout">
-          {loggingOut ? "Logging out…" : "Logout"}
+        <button type="button" onClick={() => void logout()} className="company-logout">
+          Logout
         </button>
       </div>
     </aside>
