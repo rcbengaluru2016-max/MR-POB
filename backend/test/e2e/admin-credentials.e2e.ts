@@ -1,0 +1,38 @@
+import {test,expect} from '@playwright/test';
+test('Admin credentials create and sign in through separate dashboards',async({page})=>{
+ test.setTimeout(240000);
+  await page.goto('/login');
+  await page.locator('[name="username"]').fill('browser-admin');
+  await page.locator('[name="password"]').fill('BrowserPass123');
+  await page.getByRole('button', {name: 'LOGIN', exact: true}).click();
+  await expect(page).toHaveURL(/\/super-admin\/approvals$/);
+  const accountListResponse = page.waitForResponse(response => response.url().endsWith('/api/super-admin/accounts') && response.request().method() === 'GET', {timeout: 180_000});
+  await page.goto('/super-admin/users');
+  expect((await accountListResponse).status()).toBe(200);
+  await expect(page.locator('[name="password"]')).toBeVisible();
+  await page.locator('[name="password"]').fill('InitialPass123!');
+  await page.locator('[name="name"]').fill('Created Browser Admin');
+  await page.locator('[name="email"]').fill('credential-browser-admin@example.test');
+  const accountCreateResponse = page.waitForResponse(response => response.url().endsWith('/api/super-admin/accounts') && response.request().method() === 'POST', {timeout: 180_000});
+  await page.getByRole('button', {name: 'Create Account', exact: true}).click();
+  expect((await accountCreateResponse).status()).toBe(201);
+  await expect(page.getByRole('status')).toContainText('login credentials created successfully');
+  await expect(page.getByRole('row').filter({hasText: 'credential-browser-admin@example.test'})).toContainText('Active');
+  const logoutResponse = page.waitForResponse(response => response.url().endsWith('/api/auth/logout') && response.request().method() === 'POST', {timeout: 180_000});
+  await page.getByRole('button', {name: 'Logout', exact: true}).click();
+  expect((await logoutResponse).ok()).toBe(true);
+  await page.goto('/login');
+  await page.locator('[name="username"]').fill('credential-browser-admin@example.test');
+  await page.locator('[name="password"]').fill('InitialPass123!');
+  await page.getByRole('button', {name: 'LOGIN', exact: true}).click();
+  await expect(page).toHaveURL(/\/admin\/dashboard$/);
+  await expect(page.getByRole('link', {name: 'Users & Accounts', exact: true})).toHaveCount(0);
+  await page.goto('/admin/dashboard');
+  await expect(page.getByText('Total Registrations', {exact: true})).toBeVisible();
+  await expect(page.getByRole('main').getByRole('alert')).toHaveCount(0);
+  const forbidden = await page.request.post('/api/super-admin/accounts', {headers: {Origin: 'http://127.0.0.1:3200'}, data: {action: 'create', name: 'Unauthorized Admin', email: 'forbidden@example.test', role: 'admin', initialStatus: 'active', password: 'InitialPass123!'}});
+  expect(forbidden.status()).toBe(403);
+  await page.goto('/super-admin/users');
+  await expect(page).toHaveURL(/\/access-denied$/);
+
+});
