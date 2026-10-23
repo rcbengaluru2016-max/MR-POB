@@ -298,7 +298,7 @@ body {
 .dashboard-shell-menu-button, .company-menu-button { display: none; }
 .company-sidebar-responsive { min-height: 0; }
 .company-sidebar-header { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; }
-.company-sidebar-responsive .company-nav { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.company-sidebar-responsive .company-nav { min-height: 0; flex: 1; align-content: start; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 @media (min-width: 640px) { .company-sidebar-responsive .company-nav { width: calc(100% - 8px); margin-inline: 4px; } }
 @media (min-width: 761px) and (max-width: 1023px) { .company-app { grid-template-columns: 220px minmax(0, 1fr); } }
 @media (max-width: 1023px) {
