@@ -2,6 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -15,6 +16,7 @@ type Values = z.infer<typeof loginSchema>;
 
 export function LoginForm() {
   const router = useRouter();
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [serverError, setServerError] = useState("");
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaCode, setMfaCode] = useState("");
@@ -94,9 +96,16 @@ export function LoginForm() {
         <Field label="Username / Master Code" error={form.formState.errors.username?.message}>
           <TextInput autoComplete="username" {...form.register("username")} />
         </Field>
-        <Field label="Password" error={form.formState.errors.password?.message}>
-          <TextInput type="password" autoComplete="current-password" {...form.register("password")} />
-        </Field>
+        <div className="space-y-1.5">
+          <label htmlFor="login-password" className="block text-sm font-medium text-foreground">Password</label>
+          <div className="relative">
+            <TextInput id="login-password" type={passwordVisible ? "text" : "password"} autoComplete="current-password" className="pr-12" aria-invalid={Boolean(form.formState.errors.password)} aria-describedby={form.formState.errors.password ? "login-password-error" : undefined} {...form.register("password")} />
+            <button type="button" aria-label={passwordVisible ? "Hide password" : "Show password"} aria-pressed={passwordVisible} aria-controls="login-password" onClick={() => setPasswordVisible((visible) => !visible)} className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center rounded-r-lg text-muted hover:text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
+              {passwordVisible ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+            </button>
+          </div>
+          {form.formState.errors.password?.message && <span id="login-password-error" className="block text-sm text-danger">{form.formState.errors.password.message}</span>}
+        </div>
       </>}
       {serverError ? <p className="text-sm text-danger" role="alert">{serverError}</p> : null}
       <Button className="w-full" disabled={form.formState.isSubmitting || mfaBusy}>
