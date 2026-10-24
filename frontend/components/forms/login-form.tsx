@@ -112,7 +112,7 @@ export function LoginForm() {
         {mfaRequired ? (mfaBusy ? "Verifying..." : "VERIFY CODE") : (form.formState.isSubmitting ? "Signing in..." : "LOGIN")}
       </Button>
       {!mfaRequired ? <div className="space-y-3 text-sm">
-        <Link className="block font-medium text-brand hover:underline" href="/customer-activation">Existing Customer? Activate Your Account</Link>
+        <Link className="block font-medium text-brand hover:underline" href="/customer-activation">Existing Customer? Modify Your Details</Link>
         <div className="flex items-center justify-between">
           <Link className="font-medium text-brand hover:underline" href="/forgot-password">Forgot Password?</Link>
           <Link className="font-medium text-brand hover:underline" href="/register">Register</Link>

@@ -179,17 +179,19 @@ export function ProductUploading() {
       <div className="company-pagination"><span>Showing {visible.length ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, visible.length)} of {visible.length}</span><div><button className="company-secondary-button" type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</button><span>Page {page} of {pageCount}</span><button className="company-secondary-button" type="button" disabled={page >= pageCount} onClick={() => setPage((value) => value + 1)}>Next</button></div></div>
     </section>
 
-    {showForm && <div className="company-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { setShowForm(false); setEditing(null); } }}><section className="company-modal company-product-modal" role="dialog" aria-modal="true" aria-labelledby="company-product-title"><div className="company-modal-heading"><div><h2 id="company-product-title">{editing ? "Edit Product" : "Register Product"}</h2><p>Enter accurate product details and provide all four required images.</p></div><button type="button" className="company-modal-close" aria-label="Close" onClick={() => { setShowForm(false); setEditing(null); }}>×</button></div>
+    {showForm && <div className="company-modal-backdrop company-product-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { setShowForm(false); setEditing(null); } }}><section className="company-modal company-product-modal" role="dialog" aria-modal="true" aria-labelledby="company-product-title"><div className="company-modal-heading"><div><h2 id="company-product-title">{editing ? "Edit Product" : "Register Product"}</h2><p>Enter accurate product details and provide all four required images.</p></div><button type="button" className="company-modal-close" aria-label="Close" onClick={() => { setShowForm(false); setEditing(null); }}>×</button></div>
       <form className="company-product-form" onSubmit={saveProduct} key={editing?.id ?? "new-product"}>
-        <label>Brand Name*<input name="brandName" required maxLength={120} defaultValue={editing?.brandName ?? ""} /></label>
-        <label>Content / Composition*<input name="composition" maxLength={2000} defaultValue={editing?.composition ?? ""} /></label>
-        <label>Pack Size*<input name="packSize" required maxLength={100} placeholder="e.g. 10 tablets, 100 ml" defaultValue={editing?.packSize ?? ""} /></label>
-        <label>MRP*<input name="mrp" type="number" min="0" step="0.01" required defaultValue={editing?.mrp ?? ""} /></label>
-        <label>PTR*<input name="ptr" type="number" min="0" step="0.01" required defaultValue={editing?.ptr ?? ""} /></label>
-        <label>PTS*<input name="pts" type="number" min="0" step="0.01" required defaultValue={editing?.pts ?? ""} /></label>
-        <label>GST*<select name="gst" required defaultValue={editing?.gst ?? ""}><option value="" disabled>Select GST rate</option>{gstOptions.map((rate) => <option value={rate} key={rate}>{rate}%</option>)}</select></label>
+        <div className="company-product-form-fields">
+        <label>Brand Name *<input name="brandName" required maxLength={120} defaultValue={editing?.brandName ?? ""} /></label>
+        <label>Content / Composition *<input name="composition" maxLength={2000} defaultValue={editing?.composition ?? ""} /></label>
+        <label>Pack Size *<input name="packSize" required maxLength={100} placeholder="e.g. 10 tablets, 100 ml" defaultValue={editing?.packSize ?? ""} /></label>
+        <label>MRP *<input name="mrp" type="number" min="0" step="0.01" required defaultValue={editing?.mrp ?? ""} /></label>
+        <label>PTR *<input name="ptr" type="number" min="0" step="0.01" required defaultValue={editing?.ptr ?? ""} /></label>
+        <label>PTS *<input name="pts" type="number" min="0" step="0.01" required defaultValue={editing?.pts ?? ""} /></label>
+        <label>GST *<select name="gst" required defaultValue={editing?.gst ?? ""}><option value="" disabled>Select GST rate</option>{gstOptions.map((rate) => <option value={rate} key={rate}>{rate}%</option>)}</select></label>
         <div className="company-product-images">{imageFields.map(({ key, label }) => <ProductImageField key={key} label={label} disabled={saving} onProcessingChange={(busy) => setProcessingImages((previous) => ({ ...previous, [key]: busy }))} value={key in draftImages ? draftImages[key] : editing?.images[key]} onChange={(image) => setDraftImages((previous) => ({ ...previous, [key]: image }))} />)}</div>
         {formError && <p className="company-error" role="alert">{formError}</p>}
+        </div>
         <div className="company-modal-actions"><button className="company-secondary-button" type="button" disabled={saving} onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</button><button className="company-primary-button" type="submit" disabled={saving || imagesBusy}>{saving ? "Saving…" : "Save"}</button></div>
       </form>
     </section></div>}
