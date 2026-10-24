@@ -2,7 +2,7 @@
 
 import { ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { TextInput } from "@/components/ui/field";
+import { Field, TextArea, TextInput } from "@/components/ui/field";
 import { mockProducts } from "@/lib/mr/mock-data";
 import { cartLineTotals, cartUnitPrice, currency, maxQuantity, validQuantity } from "@/lib/mr/mock-service";
 import type { CartItem } from "@/lib/mr/types";
@@ -55,6 +55,12 @@ export function MrOrderCart({ onReview }: { onReview: () => void }) {
         })}</tbody>
       </table>
     </div>}
+    <div className="px-4 py-4 sm:px-5">
+      <Field label="Delivery Instructions (Optional)">
+        <TextArea name="deliveryInstructions" rows={4} maxLength={2000} className="resize-y" placeholder="For example, call before arrival or deliver through the side entrance." value={draft.deliveryInstructions ?? ""} onChange={(event) => setDraft((current) => ({ ...current, deliveryInstructions: event.target.value }))} aria-describedby="delivery-instructions-help" />
+      </Field>
+      <p id="delivery-instructions-help" className="mt-2 text-xs text-muted">Additional delivery information, up to 2,000 characters.</p>
+    </div>
     <div className="mr-totals">
       <div className="mr-cartSummary" aria-live="polite">
         <span>Total Quantity: <strong>{invalid ? "—" : totals.quantity}</strong></span>

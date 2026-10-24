@@ -60,6 +60,7 @@ export function getDashboardStatistics(orders: Order[], mrId: string) {
 }
 
 export function validateDraft(draft: OrderDraft, profile: MrProfile): string | null {
+  if (draft.deliveryInstructions !== undefined && (typeof draft.deliveryInstructions !== "string" || draft.deliveryInstructions.length > 2000)) return "Delivery instructions must be 2,000 characters or fewer.";
   if (!mockCustomers.some((customer) => customer.id === draft.customerId && customer.status === "approved")) return "Select an approved customer before submitting your order.";
   if (!draft.items.length) return "Add at least one product to your order.";
   if (new Set(draft.items.map((item) => item.productId)).size !== draft.items.length) return "Each product must appear only once in the cart.";
@@ -82,6 +83,7 @@ export async function submitMockOrder(draft: OrderDraft, profile: MrProfile): Pr
   const id = crypto.randomUUID();
   return {
     id, reference: `ZX-DEMO-${id.slice(0, 8).toUpperCase()}`, mrId: profile.id, date,
+    deliveryInstructions: draft.deliveryInstructions,
     customer: { ...mockCustomers.find((customer) => customer.id === draft.customerId)! },
     status: "awaiting_customer_approval",
     items: draft.items.map((item) => {

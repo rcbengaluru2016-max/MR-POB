@@ -84,6 +84,7 @@ export function MrCreateOrder() {
     <div className="mr-review" onKeyDown={trapReviewFocus}><ConfirmDialog open={reviewOpen} title="Review your order" description="Check the customer, products, and quantities before creating this demo order." confirmLabel="Submit Order" busy={busy} error={error} onClose={() => { if (!busy) { setReviewOpen(false); setError(""); } }} onConfirm={() => void submit()}>
       {customer && <div className="mt-4 rounded-lg bg-background p-3 text-sm"><strong>{customer.name}</strong><p className="mt-1 text-xs text-muted">{customer.code} · {customer.phone} · {customer.pinCode}</p></div>}
       <ul className="mr-reviewLines">{draft.items.map((item) => { const product = mockProducts.find((product) => product.id === item.productId)!; const unitPrice = cartUnitPrice(item, product) ?? 0; return <li className="mr-reviewLine" key={item.productId}><div><strong>{product.brand}</strong><small>{item.quantity} × {currency(unitPrice)}</small></div><span>{currency(Number(item.quantity) * unitPrice)}</span></li>; })}</ul>
+      <section className="mt-4 text-sm"><h3 className="font-semibold">Delivery Instructions</h3><p className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{draft.deliveryInstructions || "No delivery instructions provided"}</p></section>
       <p className="mr-reviewTotal"><span>Total</span><span>{currency(total)}</span></p><p className="mt-3 text-xs text-muted">Taxes included in demo prices. No real order will be saved.</p>
     </ConfirmDialog></div>
   </div>;

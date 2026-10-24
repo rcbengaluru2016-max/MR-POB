@@ -102,3 +102,21 @@ commercial rules during integration.
 7. Replace preview-only state with backend persistence and remove demo labels
    only once real requests are in place. Resolve the build-environment issue
    and verify a production build before deployment.
+
+## Delivery instructions: frontend contract
+
+- The MR cart includes an optional multiline `deliveryInstructions` field before
+  Review Order. It accepts up to 2,000 characters and carries the original text
+  into the review dialog and the resulting demo order, without trimming.
+- MR order details and the shared Admin/Super Admin Order Status detail dialog
+  render the value as plain, read-only text with whitespace and line breaks
+  preserved. Missing or empty values show `No delivery instructions provided`.
+- For future integration, include `deliveryInstructions?: string` in the order
+  creation payload and the corresponding order-detail response. The shared
+  Admin/Super Admin UI reads `order.deliveryInstructions` on the selected order;
+  the backend must return the value associated with that order's ID.
+- Older responses may omit the property. No API route, server-side business
+  logic, database schema, or files under `backend/` were changed for this field.
+- Current MR submission remains the existing in-memory demo: it does not send
+  data to the Admin interfaces and resets on refresh. Backend persistence and
+  cross-interface synchronization are intentionally deferred to backend work.

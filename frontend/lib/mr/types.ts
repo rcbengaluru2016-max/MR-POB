@@ -49,12 +49,13 @@ export type CartOptions = {
   specialRatePrice?: string;
 };
 export type CartItem = CartOptions & { productId: string; quantity: string };
-export type OrderDraft = { customerId: string; items: CartItem[] };
+export type OrderDraft = { customerId: string; deliveryInstructions?: string; items: CartItem[] };
 export type OrderStatus = "awaiting_customer_approval" | "pending_billing" | "completed" | "rejected";
 export type OrderLine = CartOptions & { product: Product; quantity: number; unitPrice: number };
 export type Order = {
   id: string;
   reference: string;
+  deliveryInstructions?: string;
   mrId: string;
   customer: Customer;
   date: string;

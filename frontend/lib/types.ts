@@ -271,6 +271,7 @@ export type CompanySpecialRate = {
 
 export type CompanyOrder = {
   id: string;
+  deliveryInstructions?: string;
   orderNumber?: string;
   companyCode: string;
   orderDate: string;
