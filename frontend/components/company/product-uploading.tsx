@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import Image from "next/image";
+import { ProductImageField } from "./product-image-field";
 import type { CompanyProduct } from "@/lib/types";
 
 type Product = CompanyProduct;
@@ -15,15 +16,6 @@ const imageFields: Array<{ key: ImageKey; label: string }> = [
   { key: "details", label: "MRP and Batch Details Image" },
 ];
 const gstOptions = [0, 5, 12, 18, 28];
-
-function readImage(file: File) {
-  return new Promise<Product["images"][ImageKey]>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve({ name: file.name, type: file.type, size: file.size, dataUrl: String(reader.result) });
-    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
-    reader.readAsDataURL(file);
-  });
-}
 
 function money(value: number) { return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(value); }
 
@@ -40,8 +32,10 @@ export function ProductUploading() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState("");
-  const [draftPreviews, setDraftPreviews] = useState<Partial<Record<ImageKey, string>>>({});
+  const [draftImages, setDraftImages] = useState<Partial<Record<ImageKey, Product["images"][ImageKey] | null>>>({});
   const [saving, setSaving] = useState(false);
+  const [processingImages, setProcessingImages] = useState<Partial<Record<ImageKey, boolean>>>({});
+  const imagesBusy = Object.values(processingImages).some(Boolean);
   const [confirmProduct, setConfirmProduct] = useState<Product | null>(null);
   const [confirmAction, setConfirmAction] = useState<"status" | "delete">("status");
   const [viewing, setViewing] = useState<Product | null>(null);
@@ -84,18 +78,18 @@ export function ProductUploading() {
   const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
   const pageRows = visible.slice((page - 1) * pageSize, page * pageSize);
 
-  function startAdd() { setEditing(null); setDraftPreviews({}); setFormError(""); setShowForm(true); }
-  function startEdit(product: Product) { setEditing(product); setDraftPreviews({}); setFormError(""); setShowForm(true); }
+  function startAdd() { setEditing(null); setDraftImages({}); setProcessingImages({}); setFormError(""); setShowForm(true); }
+  function startEdit(product: Product) { setEditing(product); setDraftImages({}); setProcessingImages({}); setFormError(""); setShowForm(true); }
 
   async function saveProduct(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setFormError(""); setSaving(true);
+    event.preventDefault();
+    if (saving || imagesBusy) return;
+    setFormError(""); setSaving(true);
     const form = new FormData(event.currentTarget);
     try {
-      const images = { ...(editing?.images ?? {}) } as Partial<Product["images"]>;
-      for (const { key } of imageFields) {
-        const file = form.get(key);
-        if (file instanceof File && file.size) images[key] = await readImage(file);
-        if (!editing && !images[key]) throw new Error(`Upload the ${imageFields.find((field) => field.key === key)?.label?.toLowerCase() ?? "required product image"}.`);
+      const images = { ...(editing?.images ?? {}), ...draftImages } as Partial<Product["images"]>;
+      for (const { key, label } of imageFields) {
+        if (!images[key]) throw new Error(`Provide the ${label.toLowerCase()}.`);
       }
       for (const { key, label } of imageFields) {
         const image = images[key];
@@ -194,9 +188,9 @@ export function ProductUploading() {
         <label>PTR*<input name="ptr" type="number" min="0" step="0.01" required defaultValue={editing?.ptr ?? ""} /></label>
         <label>PTS*<input name="pts" type="number" min="0" step="0.01" required defaultValue={editing?.pts ?? ""} /></label>
         <label>GST*<select name="gst" required defaultValue={editing?.gst ?? ""}><option value="" disabled>Select GST rate</option>{gstOptions.map((rate) => <option value={rate} key={rate}>{rate}%</option>)}</select></label>
-        <div className="company-product-images">{imageFields.map(({ key, label }) => <label className="company-image-field" key={key}>{label} {!editing && <em>*</em>}<span>JPEG, PNG or WebP · up to 4 MB</span>{(draftPreviews[key] || editing?.images[key]?.dataUrl) && <Image className="company-image-preview" src={draftPreviews[key] || editing?.images[key]?.dataUrl || ""} alt={`${label} preview`} width={320} height={130} unoptimized />}<input name={key} type="file" accept="image/jpeg,image/png,image/webp" required={!editing && !draftPreviews[key]} onChange={(event) => { const file = event.target.files?.[0]; if (file) void readImage(file).then((image) => setDraftPreviews((previous) => ({ ...previous, [key]: image.dataUrl }))).catch((reason: unknown) => setFormError(reason instanceof Error ? reason.message : "Unable to preview this image.")); }} /></label>)}</div>
+        <div className="company-product-images">{imageFields.map(({ key, label }) => <ProductImageField key={key} label={label} disabled={saving} onProcessingChange={(busy) => setProcessingImages((previous) => ({ ...previous, [key]: busy }))} value={key in draftImages ? draftImages[key] : editing?.images[key]} onChange={(image) => setDraftImages((previous) => ({ ...previous, [key]: image }))} />)}</div>
         {formError && <p className="company-error" role="alert">{formError}</p>}
-        <div className="company-modal-actions"><button className="company-secondary-button" type="button" disabled={saving} onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</button><button className="company-primary-button" type="submit" disabled={saving}>{saving ? "Saving…" : "Save"}</button></div>
+        <div className="company-modal-actions"><button className="company-secondary-button" type="button" disabled={saving} onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</button><button className="company-primary-button" type="submit" disabled={saving || imagesBusy}>{saving ? "Saving…" : "Save"}</button></div>
       </form>
     </section></div>}
 

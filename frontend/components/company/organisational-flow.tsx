@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
 type Employee = {
@@ -101,14 +102,20 @@ export function OrganisationalFlow() {
     finally { setSaving(false); }
   }
 
+  const selectedIsMr = Boolean(selected && /medical\s+representative|\bmr\b/i.test(selected.designation));
+  const directReports = selected ? activeEmployees.filter((employee) => employee.reportingManagerId === selected.id) : [];
+  const inactiveEmployees = employees.filter((employee) => employee.status === "inactive");
+
   async function deactivateEmployee() {
-    if (!selected) return;
+    if (!selected || saving || directReports.length) return;
     setSaving(true); setError("");
     try {
       const response = await fetch("/api/company/employees", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: selected.id, action: "deactivate" }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to deactivate employee.");
-      setConfirmDeactivate(false); setSelected(null); setNotice("Employee deactivated. Historical records have been retained."); await load();
+      if (data.employee?.id !== selected.id || data.employee?.status !== "inactive") throw new Error("Deactivation was not confirmed by the server. No local changes were made. Please refresh and check the employee status.");
+      setEmployees((current) => current.map((employee) => employee.id === data.employee.id ? data.employee : employee));
+      setConfirmDeactivate(false); setSelected(null); setNotice("Employee deactivated. Historical records have been retained.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to deactivate employee."); }
     finally { setSaving(false); }
   }
@@ -142,12 +149,16 @@ export function OrganisationalFlow() {
       </section>
     </div>}
 
-    {selected && <div className="company-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelected(null); }}><section className="company-modal company-employee-detail" role="dialog" aria-modal="true" aria-labelledby="company-employee-name">
+    {inactiveEmployees.length > 0 && <section className="company-panel"><div className="company-panel-heading"><div><h2>Inactive employees</h2><p>Retained for historical reference; excluded from the active hierarchy.</p></div></div><ul className="space-y-2">{inactiveEmployees.map((employee) => <li key={employee.id}><button type="button" className="company-table-action" onClick={() => { setError(""); setSelected(employee); }}>{employee.fullName} · {employee.designation} · Inactive</button></li>)}</ul></section>}
+
+    {selected && !confirmDeactivate && <div className="company-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelected(null); }}><section className="company-modal company-employee-detail" role="dialog" aria-modal="true" aria-labelledby="company-employee-name">
       <button type="button" className="company-modal-close company-detail-close" aria-label="Close" onClick={() => setSelected(null)}>×</button>
       {selected.photo ? <Image className="company-detail-photo" src={selected.photo.dataUrl} alt={`${selected.fullName}`} width={96} height={96} unoptimized /> : <div className="company-detail-photo company-employee-initials">{initials(selected.fullName)}</div>}
       <h2 id="company-employee-name">{selected.fullName}</h2><p>{selected.designation}</p><dl><div><dt>Contact Number</dt><dd>{selected.contactNumber}</dd></div><div><dt>Reporting Manager</dt><dd>{employees.find((employee) => employee.id === selected.reportingManagerId)?.fullName ?? "Top level"}</dd></div><div><dt>Account Status</dt><dd>{selected.status === "inactive" ? "Inactive" : "Active"}</dd></div></dl>
-      <div className="company-modal-actions"><button className="company-secondary-button" type="button" disabled={selected.status === "inactive"} onClick={() => { setEditing(selected); setError(""); setShowForm(true); setSelected(null); }}>Edit</button>{selected.status !== "inactive" && <button className="company-danger-button" type="button" onClick={() => setConfirmDeactivate(true)}>Deactivate</button>}</div>
+      <div className="company-modal-actions"><button className="company-secondary-button" type="button" disabled={selected.status === "inactive"} onClick={() => { setEditing(selected); setError(""); setShowForm(true); setSelected(null); }}>Edit</button>{selected.status !== "inactive" && <button className="company-danger-button" type="button" onClick={() => { setError(""); setConfirmDeactivate(true); }}>{selectedIsMr ? "Deactivate MR" : "Deactivate"}</button>}</div>
     </section></div>}
-    {confirmDeactivate && selected && <div className="company-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setConfirmDeactivate(false); }}><section className="company-modal company-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="company-deactivate-title"><div className="company-modal-heading"><div><h2 id="company-deactivate-title">Deactivate employee?</h2><p>{selected.fullName} will no longer appear in the active hierarchy. Historical records will be retained.</p></div></div>{error && <p className="company-error" role="alert">{error}</p>}<div className="company-modal-actions"><button className="company-secondary-button" type="button" disabled={saving} onClick={() => setConfirmDeactivate(false)}>Cancel</button><button className="company-danger-button" type="button" disabled={saving} onClick={() => void deactivateEmployee()}>{saving ? "Deactivating…" : "Confirm Deactivation"}</button></div></section></div>}
+    <ConfirmDialog open={confirmDeactivate && Boolean(selected)} title={selectedIsMr ? "Deactivate MR?" : "Deactivate employee?"} description={`${selected?.fullName ?? "This employee"} will no longer appear in the active hierarchy after the server confirms deactivation. Historical employee and order records will be retained.`} confirmLabel={selectedIsMr ? "Deactivate MR" : "Confirm Deactivation"} danger busy={saving} confirmDisabled={directReports.length > 0} error={error} onClose={() => { setConfirmDeactivate(false); setError(""); }} onConfirm={() => void deactivateEmployee()}>
+      {directReports.length > 0 && <p className="mt-4 text-sm text-danger" role="alert">Reassign the active direct reports before deactivating this employee: {directReports.map((employee) => employee.fullName).join(", ")}. Existing reporting relationships will not be changed automatically.</p>}
+    </ConfirmDialog>
   </div>;
 }

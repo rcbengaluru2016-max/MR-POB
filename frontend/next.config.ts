@@ -31,6 +31,13 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: securityHeaders,
       },
+      {
+        // Only the product image form needs same-origin camera access.
+        source: "/company/product-uploading",
+        headers: [
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
+        ],
+      },
     ];
   },
 };
