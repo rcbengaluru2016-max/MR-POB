@@ -62,7 +62,7 @@ function detailEntries(record: RecordShape): [string, string][] {
 }
 
 function currentWorkflowStep(record: RecordShape) {
-  if (record.status === "approved") return 5;
+  if (record.status === "approved") return record.activationPending ? 2 : 5;
   if (record.status === "rejected") return 1;
   return 1;
 }
@@ -84,6 +84,8 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [masterCode, setMasterCode] = useState("");
+  const [activationPending, setActivationPending] = useState(false);
+  const [decisionNotice, setDecisionNotice] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -94,7 +96,7 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
         if (expectedKind && data.record.kind !== expectedKind) throw new Error("Registration not found.");
         return data as { record: RecordShape };
       })
-      .then((data) => setRecord(data.record))
+      .then((data) => { setRecord(data.record); setActivationPending(data.record.activationPending === true); })
       .catch((item: unknown) => {
         if (item instanceof DOMException && item.name === "AbortError") return;
         setError(item instanceof Error ? item.message : "Unable to load registration.");
@@ -114,6 +116,8 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Action failed");
       if (action === "approve" && superAdminFlow && typeof data.masterCode === "string") setMasterCode(data.masterCode);
+      setActivationPending(data.activationPending === true);
+      setDecisionNotice(action === "approve" ? "Registration approved. Account activation remains pending." : "Registration rejected.");
       setRecord((current) => current ? {
         ...current,
         status: action === "approve" ? "approved" : "rejected",
@@ -209,10 +213,13 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
         {Object.keys(files).length ? (
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {Object.entries(files).map(([key, file]) => (
-              <a key={key} href={file.dataUrl} target="_blank" rel="noreferrer" className="group flex min-h-16 items-center justify-between gap-3 rounded-xl border border-dashed border-line bg-background px-4 py-3 transition hover:border-brand hover:bg-panel/60">
+              <div key={key} className="rounded-xl border border-dashed border-line bg-background">
+              <a href={file.dataUrl} target="_blank" rel="noopener noreferrer" className="group flex min-h-16 items-center justify-between gap-3 rounded-xl px-4 py-3 transition hover:border-brand hover:bg-panel/60">
                 <span className="min-w-0"><span className="block truncate text-sm font-medium text-foreground group-hover:text-brand">{documentLabels[key] ?? `View ${key}`}</span><span className="mt-1 block truncate text-xs text-muted">{file.name}</span></span>
-                <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">Uploaded</span>
+                <span className="shrink-0 text-xs font-semibold text-brand">Preview ↗</span>
               </a>
+              <a href={file.downloadUrl ?? file.dataUrl} download target="_blank" rel="noopener noreferrer" className="mb-3 ml-4 inline-flex text-xs font-medium text-brand underline" aria-label={`Download ${file.name}`}>Download</a>
+              </div>
             ))}
           </div>
         ) : <p className="mt-4 rounded-xl border border-dashed border-line bg-background p-5 text-center text-sm text-muted">No documents were uploaded.</p>}
@@ -220,6 +227,7 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
       </section>
 
       {error ? <p className="rounded-lg bg-red-50 p-3 text-sm text-danger" role="alert">{error}</p> : null}
+      {decisionNotice ? <p className="rounded-lg border border-line bg-panel p-3 text-sm" role="status">{decisionNotice}</p> : null}
 
       {record.status === "pending_verification" ? (
         <div className="flex flex-wrap justify-end gap-3 pb-2">
@@ -231,7 +239,7 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
       <ConfirmDialog
         open={approveOpen}
         title="Approve registration"
-        description="This will create the respective Master, generate a Master Code username, and activate the account. WhatsApp notifications are not sent because delivery is not configured."
+        description={activationPending ? "Record this registration as approved. Account activation and master creation remain pending." : "This will create the respective Master, generate a Master Code username, and activate the account. WhatsApp notifications are not sent because delivery is not configured."}
         confirmLabel="Approve Registration"
         busy={isDeciding}
         error={approveOpen ? error : undefined}

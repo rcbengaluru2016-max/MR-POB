@@ -11,9 +11,13 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  typescript: {
+    tsconfigPath: process.env.NODE_ENV === "production" ? "tsconfig.build.json" : "tsconfig.json",
+  },
   experimental: {
     agentFeedback: true,
     agentUpgrade: "security",
+    proxyClientMaxBodySize: "32mb",
   },
   cacheComponents: true,
   partialPrefetching: true,

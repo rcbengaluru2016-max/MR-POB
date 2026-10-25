@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { AtSign, CalendarDays, Clock3, KeyRound, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { getSuperAdminAccount } from "@/lib/server/super-admin";
+import { backendEnabled } from "@/lib/server/backend-client";
 import { formatDateTime } from "@/lib/utils";
 import { ChangeSuperAdminPassword } from "@/components/super-admin/change-password";
 
@@ -84,7 +85,7 @@ export default async function SuperAdminAccountPage() {
             <div><h2 className="font-semibold text-foreground">Account Details</h2><p className="mt-0.5 text-xs text-muted">Status and recent account activity</p></div>
           </div>
           <dl className="grid gap-3">
-            <Detail icon={CalendarDays} label="Account created" value={formatDateTime(account.createdAt)} />
+            <Detail icon={CalendarDays} label="Account created" value={account.createdAt ? formatDateTime(account.createdAt) : "Not available"} />
             <Detail icon={Clock3} label="Last successful login" value={lastLogin ? formatDateTime(lastLogin) : "Not recorded yet"} />
           </dl>
         </article>
@@ -100,7 +101,7 @@ export default async function SuperAdminAccountPage() {
             <KeyRound aria-hidden="true" className="size-4" /> MFA verified
           </span>
         </div>
-        <ChangeSuperAdminPassword />
+        {backendEnabled() ? <p className="text-sm text-muted">Manage your password through Amazon Cognito.</p> : <ChangeSuperAdminPassword />}
       </article>
     </section>
   );

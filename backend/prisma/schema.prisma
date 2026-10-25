@@ -1,0 +1,224 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+enum RegistrationKind {
+  customer
+  company
+  patient
+}
+
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum Role {
+  ADMIN
+  SUPER_ADMIN
+  CUSTOMER
+  COMPANY
+  PATIENT
+}
+
+enum UserState {
+  ACTIVE
+  INACTIVE
+}
+
+model ErpUser {
+  id String @id @default(uuid()) @db.Uuid
+  cognitoSub String? @unique
+  username String @unique
+  email String? @unique @db.VarChar(254)
+  displayName String
+  role Role
+  state UserState @default(INACTIVE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdById String? @db.Uuid
+  createdBy ErpUser? @relation("CreatedAccounts", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAccounts ErpUser[] @relation("CreatedAccounts")
+  ownedRegistrations Registration[] @relation("Owner")
+  decisions Registration[] @relation("Decision")
+  audits AuditEvent[]
+  @@index([role, createdAt, id])
+}
+
+model Registration {
+  id String @id
+  kind RegistrationKind
+  status RegistrationStatus @default(PENDING)
+  mobile String @db.VarChar(10)
+  email String? @db.VarChar(254)
+  termsAcceptedAt DateTime @default(now())
+  termsVersion String @default("registration-v1")
+  submittedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  decidedAt DateTime?
+  decidedById String? @db.Uuid
+  rejectionReason String?
+  ownerId String? @db.Uuid
+  idempotencyKey String? @unique
+  requestHash String
+  owner ErpUser? @relation("Owner", fields: [ownerId], references: [id])
+  decidedBy ErpUser? @relation("Decision", fields: [decidedById], references: [id])
+  customer CustomerRegistration?
+  company CompanyRegistration?
+  patient PatientRegistration?
+  documents Document[]
+  audits AuditEvent[]
+  notifications RegistrationNotification[]
+  @@unique([kind, mobile])
+  @@unique([kind, email])
+  @@index([kind, status, submittedAt, id])
+}
+
+model CustomerRegistration {
+  registrationId String @id
+  customerName String @db.VarChar(200)
+  businessName String @db.VarChar(200)
+  customerType String @db.VarChar(50)
+  dlNumber1 String @db.VarChar(100)
+  dlNumber2 String @db.VarChar(100)
+  dlNumber3 String? @db.VarChar(100)
+  fssaiNumber String? @db.VarChar(100)
+  gstNumber String @unique @db.VarChar(100)
+  creditDays String @db.VarChar(50)
+  paymentMethod String @db.VarChar(50)
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  address CustomerAddress?
+}
+
+model CustomerAddress {
+  registrationId String @id
+  addressLine1 String @db.VarChar(500)
+  addressLine2 String? @db.VarChar(500)
+  addressLine3 String? @db.VarChar(500)
+  addressLine4 String? @db.VarChar(500)
+  pinCode String @db.VarChar(6)
+  customer CustomerRegistration @relation(fields: [registrationId], references: [registrationId], onDelete: Cascade)
+}
+
+model CompanyRegistration {
+  registrationId String @id
+  companyName String @db.VarChar(200)
+  division String @db.VarChar(200)
+  headquarter String @db.VarChar(200)
+  adminFullName String @db.VarChar(200)
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+}
+
+model PatientRegistration {
+  registrationId String @id
+  patientName String @db.VarChar(200)
+  gender String? @db.VarChar(30)
+  address String @db.VarChar(2000)
+  paymentMethod String @db.VarChar(50)
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+}
+
+model Document {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String
+  slot String @db.VarChar(50)
+  originalName String @db.VarChar(200)
+  objectKey String @unique
+  versionId String?
+  contentType String @db.VarChar(100)
+  size Int
+  sha256 String @db.VarChar(64)
+  createdAt DateTime @default(now())
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  @@unique([registrationId, slot])
+}
+
+model AuditEvent {
+  id String @id @default(uuid()) @db.Uuid
+  actorId String? @db.Uuid
+  registrationId String?
+  action String @db.VarChar(100)
+  detail Json?
+  createdAt DateTime @default(now())
+  actor ErpUser? @relation(fields: [actorId], references: [id])
+  registration Registration? @relation(fields: [registrationId], references: [id])
+  @@index([registrationId, createdAt])
+}
+
+model UploadBatch {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String @unique
+  completedAt DateTime?
+  cleanupStartedAt DateTime?
+  cleanupAfter DateTime
+  createdAt DateTime @default(now())
+  objects UploadObject[]
+  @@index([completedAt, cleanupAfter])
+}
+
+model UploadObject {
+  id String @id @default(uuid()) @db.Uuid
+  batchId String @db.Uuid
+  objectKey String @unique
+  versionId String?
+  batch UploadBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+}
+
+enum NotificationStatus {
+  PENDING
+  RETRY
+  PROCESSING
+  MOCKED
+  ACCEPTED
+  DELIVERED
+  BLOCKED
+  UNKNOWN
+  FAILED
+}
+
+// This row is both the transactional outbox and the durable delivery ledger.
+model RegistrationNotification {
+  id String @id @default(uuid()) @db.Uuid
+  registrationId String
+  event RegistrationStatus
+  kind RegistrationKind
+  recipient String @db.VarChar(16)
+  templateKey String @db.VarChar(100)
+  templateId String?
+  payload Json
+  status NotificationStatus @default(PENDING)
+  attempts Int @default(0)
+  publishAttempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  enqueueAfter DateTime @default(now())
+  leaseUntil DateTime?
+  claimToken String? @db.Uuid
+  providerMessageId String?
+  lastError String? @db.VarChar(100)
+  deadLetteredAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  deliveries NotificationAttempt[]
+  @@unique([registrationId, event])
+  @@index([status, enqueueAfter, nextAttemptAt])
+  @@index([status, leaseUntil])
+}
+
+model NotificationAttempt {
+  id String @id @default(uuid()) @db.Uuid
+  notificationId String @db.Uuid
+  number Int
+  outcome String @db.VarChar(30)
+  errorCode String? @db.VarChar(100)
+  startedAt DateTime @default(now())
+  finishedAt DateTime?
+  notification RegistrationNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  @@unique([notificationId, number])
+}

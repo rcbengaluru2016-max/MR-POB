@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { readSessionToken, SESSION_COOKIE } from "@/lib/server/session-token";
+import { ACCESS_COOKIE, backendEnabled, backendUser } from "@/lib/server/backend-client";
+import { backendApi } from "@/lib/server/backend-api";
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const session = readSessionToken(request.cookies.get(SESSION_COOKIE)?.value);
+  if (backendEnabled() && pathname.startsWith("/api/")) return backendApi(request);
+  const session = backendEnabled()
+    ? await backendUser(request.cookies.get(ACCESS_COOKIE)?.value)
+    : readSessionToken(request.cookies.get(SESSION_COOKIE)?.value);
+
+  if (pathname.startsWith("/super-admin") && session?.userType !== "super_admin") {
+    return NextResponse.redirect(new URL(session ? "/access-denied" : "/login", request.url));
+  }
 
   if (pathname.startsWith("/admin")) {
     if (session?.userType !== "admin" && session?.userType !== "super_admin") {
@@ -41,5 +50,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/portal/:path*", "/company/:path*", "/login"],
+  matcher: ["/api/:path*", "/super-admin/:path*", "/admin/:path*", "/portal/:path*", "/company/:path*", "/login"],
 };

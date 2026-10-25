@@ -1,0 +1,37 @@
+name: Backend checks
+on:
+  push:
+    paths: ["backend/**", ".github/workflows/backend-ci.yml"]
+  pull_request:
+    paths: ["backend/**", ".github/workflows/backend-ci.yml"]
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/zenex_test
+      IDEMPOTENCY_SECRET: ci-only-test-fingerprint-secret-at-least-32-chars
+      COGNITO_USER_POOL_ID: ap-southeast-2_testpool
+      COGNITO_CLIENT_ID: testclient
+      AWS_REGION: ap-southeast-2
+      S3_REGION: ap-south-1
+      S3_BUCKET: zenex-international-mrpob-files
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm run prisma:generate
+      - run: npm run check
+      - run: npm run build
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm --prefix ../frontend ci
+      - run: npx playwright install --with-deps chrome
+      - run: npm run test:e2e
+      - run: docker build -t zenex-backend:ci .

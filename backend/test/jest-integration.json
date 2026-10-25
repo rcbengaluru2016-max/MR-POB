@@ -1,0 +1,10 @@
+{
+  "rootDir": "..",
+  "roots": ["<rootDir>/src", "<rootDir>/test"],
+  "preset": "ts-jest",
+  "testEnvironment": "node",
+  "testMatch": ["<rootDir>/test/integration/**/*.spec.ts"],
+  "testTimeout": 300000,
+  "maxWorkers": 1,
+  "clearMocks": true
+}

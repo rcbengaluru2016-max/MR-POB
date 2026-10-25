@@ -1,0 +1,12 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "ManageErpLoginCredentialsInExistingPool",
+    "Effect": "Allow",
+    "Action": [
+      "cognito-idp:AdminGetUser", "cognito-idp:AdminCreateUser",
+      "cognito-idp:AdminSetUserPassword", "cognito-idp:AdminEnableUser", "cognito-idp:AdminDisableUser"
+    ],
+    "Resource": "arn:aws:cognito-idp:ap-south-1:703235209354:userpool/ap-south-1_KE5L9HYBe"
+  }]
+}
