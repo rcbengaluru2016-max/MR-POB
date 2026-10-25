@@ -6,9 +6,9 @@ test('all registration forms persist through the frontend adapter and appear in 
   const png = await sharp({create: {width: 3, height: 3, channels: 3, background: '#1451ab'}}).png().toBuffer();
   const common = {password: 'RegistrationPass123', confirmPassword: 'RegistrationPass123'};
   const forms: {kind: string; name: string; fields: Record<string, string>; selects: Record<string, string>; files: string[]}[] = [
-    {kind: 'customer', name: 'Browser Owner', fields: {...common, customerName: 'Browser Owner', mobile: '9876543201', businessName: 'Browser Pharmacy', addressLine1: '123 Browser Road', pinCode: '560001', dlNumber1: 'BROWSER-DL1', dlNumber2: 'BROWSER-DL2', gstNumber: 'BROWSER-GST-001'}, selects: {customerType: 'Retail Pharmacy', creditDays: 'week_2', paymentMethod: 'UPI'}, files: ['dl1', 'dl2', 'gstCertificate', 'shopOutside', 'shopInside']},
+    {kind: 'customer', name: 'Browser Owner', fields: {customerName: 'Browser Owner', mobile: '9876543201', businessName: 'Browser Pharmacy', addressLine1: '123 Browser Road', pinCode: '560001', dlNumber1: 'BROWSER-DL1', dlNumber2: 'BROWSER-DL2', gstNumber: 'BROWSER-GST-001'}, selects: {customerType: 'Retail Pharmacy', creditDays: 'week_2', paymentMethod: 'UPI'}, files: ['dl1', 'dl2', 'gstCertificate', 'shopOutside', 'shopInside']},
     {kind: 'company', name: 'Browser Company', fields: {...common, companyName: 'Browser Company', division: 'Medical', headquarter: 'Bengaluru', adminFullName: 'Browser Company Administrator', adminEmail: 'browser-company@example.test', adminMobile: '9876543202'}, selects: {}, files: ['companyLogo', 'adminPhoto']},
-    {kind: 'patient', name: 'Browser Patient', fields: {...common, patientName: 'Browser Patient', mobile: '9876543203', address: '123 Patient Browser Road'}, selects: {gender: 'Female', paymentMethod: 'UPI'}, files: ['idProof']},
+    {kind: 'patient', name: 'Browser Patient', fields: {patientName: 'Browser Patient', mobile: '9876543203', address: '123 Patient Browser Road'}, selects: {gender: 'Female', paymentMethod: 'UPI'}, files: ['idProof']},
   ];
   const registrations: {kind: string; name: string; id: string}[] = [];
   for (const form of forms) {
@@ -34,9 +34,10 @@ test('all registration forms persist through the frontend adapter and appear in 
   await page.locator('[name="username"]').fill('browser-admin');
   await page.locator('[name="password"]').fill('BrowserPass123');
   await page.getByRole('button', {name: 'LOGIN', exact: true}).click();
-  await expect(page).toHaveURL(/\/super-admin\/approvals$/);
+  await expect(page).toHaveURL(/\/super-admin\/dashboard$/);
+  await page.goto('/super-admin/approvals');
   const cookies = await context.cookies();
-  expect(cookies.find(cookie => cookie.name === 'zenex_access_token')?.httpOnly).toBe(true);
+  expect(cookies.find(cookie => cookie.name === 'zenex_backend_access')?.httpOnly).toBe(true);
   for (const registration of registrations) {
     const label = registration.kind[0].toUpperCase() + registration.kind.slice(1);
     await page.getByRole('tab', {name: label, exact: true}).click();
@@ -81,19 +82,25 @@ test('all registration forms persist through the frontend adapter and appear in 
   await page.goto('/admin/dashboard');
   await expect(page.getByText('Total Registrations', {exact: true})).toBeVisible();
   await expect(page.getByRole('main').getByRole('alert')).toHaveCount(0);
-  await page.goto('/admin/registrations/patient');
+  await page.goto('/admin/approvals');
+  await page.getByRole('tab', {name: 'Patient', exact: true}).click();
   const patientRow = page.getByRole('row').filter({hasText: 'Browser Patient'});
   await expect(patientRow).toContainText('Pending');
   await patientRow.getByRole('link', {name: 'View', exact: true}).click();
   await page.getByRole('button', {name: 'Approve Registration', exact: true}).click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog).toContainText('Account provisioning and activation remain pending');
+  await expect(dialog).toContainText('Account activation and master creation remain pending');
   const decisionResponse = page.waitForResponse(response => response.url().includes('/api/admin/registrations/') && response.request().method() === 'POST', {timeout: 180_000});
   await dialog.getByRole('button', {name: 'Approve Registration', exact: true}).click();
   expect((await decisionResponse).status()).toBe(201);
   await expect(page.getByRole('status')).toContainText('Registration approved');
-  await page.goto('/admin/registrations/patient');
+  await page.goto('/admin/approvals');
+  await page.getByRole('tab', {name: 'Patient', exact: true}).click();
   await expect(page.getByRole('row').filter({hasText: 'Browser Patient'})).toContainText('Approved');
+  await page.goto('/admin/registrations/patient');
+  await page.getByRole('row').filter({hasText: 'Browser Patient'}).getByRole('link', {name: 'View', exact: true}).click();
+  await expect(page.getByRole('heading', {name: 'Registration Details', exact: true})).toBeVisible();
+  await expect(page.getByText('Registration approved. Master creation and account activation are pending.', {exact: true})).toBeVisible();
   const forbidden = await page.request.post('/api/super-admin/accounts', {headers: {Origin: 'http://127.0.0.1:3200'}, data: {action: 'create', name: 'Unauthorized Admin', email: 'forbidden@example.test', role: 'admin', initialStatus: 'active', password: 'InitialPass123!'}});
   expect(forbidden.status()).toBe(403);
   await page.goto('/super-admin/users');

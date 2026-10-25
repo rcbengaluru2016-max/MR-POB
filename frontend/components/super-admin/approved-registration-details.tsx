@@ -5,10 +5,12 @@ import { useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { cn, formatDateTime } from "@/lib/utils";
 import { CREDIT_DAY_OPTIONS, PAYMENT_MODES } from "@/lib/constants";
+import { VerificationPage } from "@/components/admin/verification-page";
 
 type Kind = "customer" | "company" | "patient";
 type SafeDetails = {
-  registration: Record<string, unknown> & { id: string; kind: Kind; status: string; submittedAt: string; files?: Record<string, { name: string; type: string; size: number; dataUrl: string }> };
+  activationPending?: boolean;
+  registration: Record<string, unknown> & { id: string; kind: Kind; status: string; submittedAt: string; files?: Record<string, { name: string; type: string; size: number; dataUrl: string; downloadUrl?: string }> };
   master: Record<string, unknown> & { code: string; status: string; createdAt: string; approvalDate: string };
   account: null | { username: string; displayName: string; email?: string; userType: string; status: string; createdAt: string; lastLoginAt?: string };
   activationMessage: null | { recipient: string; status: string; sentAt: string };
@@ -192,6 +194,7 @@ export function ApprovedRegistrationDetails({ kind, id, basePath = "/super-admin
 
   if (error) return <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-danger" role="alert">{error}</p>;
   if (!data) return <p className="text-sm text-muted">Loading approved registration…</p>;
+  if (data.activationPending) return <div className="space-y-4"><p className="rounded-xl border border-line bg-panel p-4 text-sm">Registration approved. Master creation and account activation are pending.</p><VerificationPage expectedKind={kind} superAdminFlow returnPath={`${basePath}/registrations/${kind}`} /></div>;
 
   const { registration, master, account, activationMessage } = data;
   const form = erpForm ?? initialErpForm(master);
@@ -246,7 +249,7 @@ export function ApprovedRegistrationDetails({ kind, id, basePath = "/super-admin
         <div className="mt-6 border-t border-line pt-5">
           <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold text-foreground">Documents</h2><span className="text-xs text-muted">{Object.keys(files).length} uploaded</span></div>
           {Object.keys(files).length ? <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {Object.entries(files).map(([key, file]) => <a key={key} href={file.dataUrl} target="_blank" rel="noreferrer" className="rounded-xl border border-dashed border-line bg-background px-4 py-3 text-center transition hover:border-brand hover:bg-panel"><span className="block text-sm font-medium text-foreground">{documentLabels[key] ?? `View ${key}`}</span><span className="mt-1 block text-xs text-muted">{file.name}</span><span className="mt-1 block text-[10px] font-semibold text-emerald-700">uploaded</span></a>)}
+            {Object.entries(files).map(([key, file]) => <div key={key} className="rounded-xl border border-dashed border-line bg-background p-3 text-center"><a href={file.dataUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-brand"><span className="block text-sm font-medium">{documentLabels[key] ?? `View ${key}`}</span><span className="mt-1 block text-xs text-muted">{file.name}</span><span className="mt-1 block text-xs font-semibold text-brand">Preview ↗</span></a><a href={file.downloadUrl ?? file.dataUrl} download target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs text-brand underline" aria-label={`Download ${file.name}`}>Download</a></div>)}
           </div> : <p className="mt-3 text-sm text-muted">No documents were uploaded.</p>}
           {kind === "customer" && !files.gstCertificate ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">GST Certificate Upload * — required document not present.</p> : null}
         </div>

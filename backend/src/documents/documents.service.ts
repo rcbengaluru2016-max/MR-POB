@@ -127,12 +127,14 @@ export class DocumentsService implements OnModuleInit, OnModuleDestroy {
       await this.prisma.uploadBatch.deleteMany({ where: { completedAt: { lt: new Date(Date.now() - 7 * 86400000) } } });
     } finally { this.cleaning = false; }
   }
-  async download(id: string, user: ErpUser) {
+  async download(id: string, user: ErpUser, preview = false) {
     const document = await this.prisma.document.findUnique({ where: { id }, include: { registration: true } });
     if (!document) throw new NotFoundException('Document not found');
     const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(user.role);
     if (user.state !== 'ACTIVE' || (!isAdmin && (document.registration.ownerId !== user.id || document.registration.status !== 'APPROVED'))) throw new ForbiddenException('Document access denied');
+    if (preview && !['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(document.contentType)) throw new UnsupportedMediaTypeException('This document cannot be previewed. Use Download instead.');
     await this.prisma.auditEvent.create({ data: { actorId: user.id, registrationId: document.registrationId, action: 'DOCUMENT_ACCESS', detail: { documentId: id } } });
-    return { url: await this.storage.signedDownload(document.objectKey, document.originalName, document.versionId), expiresIn: 60 };
+    const args = [document.objectKey, document.originalName, document.versionId] as const;
+    return { url: preview ? await this.storage.signedDownload(...args, { contentType: document.contentType }) : await this.storage.signedDownload(...args), expiresIn: 60 };
   }
 }

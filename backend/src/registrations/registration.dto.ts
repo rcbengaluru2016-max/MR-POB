@@ -1,6 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Equals, IsEmail, IsEnum, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength, registerDecorator, ValidationArguments } from 'class-validator';
+import { Equals, IsEmail, IsEnum, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength, registerDecorator, ValidationArguments, ValidateIf } from 'class-validator';
 import { RegistrationKind, RegistrationStatus } from '@prisma/client';
 
 export const CUSTOMER_TYPES = ['Retail Pharmacy', 'Hospital', 'Clinic'];
@@ -20,11 +20,13 @@ function MatchesPassword() {
 }
 
 export class BaseRegistrationDto {
-  @ApiProperty({ minLength: 8, maxLength: 256, format: 'password', writeOnly: true, description: 'Validated then discarded. Account activation sets a new Cognito password.' })
+  @ApiPropertyOptional({ minLength: 8, maxLength: 256, format: 'password', writeOnly: true, description: 'Optional legacy fields, validated together then discarded. Account activation sets a new Cognito password.' })
+  @ValidateIf(input => input.password !== undefined || input.confirmPassword !== undefined)
   @IsString() @MinLength(8) @MaxLength(256) @Matches(/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)[\s\S]+$/, { message: 'Password must contain uppercase, lowercase and a number' })
   password!: string;
 
-  @ApiProperty({ format: 'password', writeOnly: true })
+  @ApiPropertyOptional({ format: 'password', writeOnly: true })
+  @ValidateIf(input => input.password !== undefined || input.confirmPassword !== undefined)
   @IsString() @MaxLength(256) @MatchesPassword()
   confirmPassword!: string;
 

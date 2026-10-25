@@ -2,7 +2,7 @@
 
 NestJS/TypeScript, Prisma/PostgreSQL, Cognito access-token authentication, and private S3 documents. All backend source, migration, tests and deployment examples live here. The frontend keeps its existing design and uses server-side adapters when `BACKEND_API_URL` is set.
 
-Read [the inspected architecture, fields, schema and API decisions](docs/implementation-plan.md) before changing the contract. Only submission and administrator read access are implemented. Approval, rejection, master creation, account activation, WhatsApp, Redis and SQS are outside this task.
+Read [the local startup commands and connected scope](docs/local-development.md) to run the application. Registration review decisions and Admin credential management are implemented; end-user master creation and activation remain separate from approval.
 
 ## Local setup
 
@@ -13,7 +13,9 @@ npm ci
 Copy-Item .env.example .env
 ```
 
-Set `DATABASE_URL`, `IDEMPOTENCY_SECRET` (random, at least 32 characters), `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, and optionally `COGNITO_CLIENT_SECRET`. The fixed bucket is `zenex-international-mrpob` in `ap-southeast-2`. Use the AWS SDK default credential chain: a local AWS profile for development, an IAM task role on ECS. Do not commit `.env` or copy AWS credentials to frontend variables.
+Set `DATABASE_URL`, `IDEMPOTENCY_SECRET` (random, at least 32 characters), `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, and optionally `COGNITO_CLIENT_SECRET`. Set `S3_REGION=ap-south-1` and `S3_BUCKET=zenex-international-mrpob-files`. `AWS_REGION` continues to configure Cognito and SQS; change it only when those services have also moved. The fixed bucket is `zenex-international-mrpob-files` in `ap-south-1`. Use the AWS SDK default credential chain: a local AWS profile for development, an IAM task role on ECS. Do not commit `.env` or copy AWS credentials to frontend variables.
+
+For the new AWS account, authenticate the local profile against account `703235209354` and grant the backend role the permissions in `infra/task-role-policy.json`. Run `node scripts/verify-storage.cjs` from `backend/` using an operator identity with bucket-configuration read permissions to check privacy, versioning, encryption and ownership. The screenshots confirm the bucket name, region and prefixes only; these security settings require live verification. Policy files are deployment examples and are not applied automatically. Existing document records retain their object keys and version IDs; files from the previous bucket must be migrated and version references reconciled before those records can be downloaded from the new bucket. Cognito pool/client IDs and any enabled SQS queue URLs must be verified separately if those services also move to the new account.
 
 The PostgreSQL URL includes `connection_limit=10&pool_timeout=10`; size the limit against the RDS connection budget divided by maximum ECS tasks, leaving headroom for migrations and operations. In production require certificate-verified TLS and use RDS Proxy when justified by connection demand.
 
@@ -34,7 +36,7 @@ In `frontend/.env.local`, set `BACKEND_API_URL=http://localhost:3001` and `FRONT
 
 ## Existing Cognito administrators
 
-Create/configure the administrator in the intended Cognito user pool, complete any temporary-password challenge, disable public self-signup, require MFA, and enable the app client's `ALLOW_USER_PASSWORD_AUTH`. Configure Cognito's password and recovery policies there. This backend supports `SOFTWARE_TOKEN_MFA` and `SMS_MFA` challenges. New-password and MFA-enrollment challenges must be completed through Cognito administration/managed login before this login form is used.
+Create/configure the administrator in the intended Cognito user pool, complete any temporary-password challenge, disable public self-signup, require MFA, and enable the app client's `ALLOW_USER_PASSWORD_AUTH`. Configure Cognito's password and recovery policies there. The login form supports TOTP/SMS challenges and first-login authenticator enrollment. The temporary-password change must be completed through Cognito administration/managed login first.
 
 Verify the immutable Cognito `sub` from the trusted user-pool console/CLI, then provision its ERP role:
 
@@ -48,7 +50,7 @@ node scripts/provision-admin.cjs
 
 The script writes an audit event and creates no Cognito account. Only an ACTIVE PostgreSQL ERP user with ADMIN/SUPER_ADMIN role can list/read registrations. Cognito groups and public registration fields never grant that role. The backend verifies access tokens, issuer/app client/expiry and immutable subject, and rechecks ERP state. The Next server stores tokens in HttpOnly, SameSite cookies; it does not expose tokens to client JavaScript. Logout requests Cognito global sign-out and clears cookies. An already issued JWT can remain valid until expiry under offline verification; set short access-token lifetimes and deactivate the ERP user to immediately deny this backend. No refresh-token flow is implemented; expired sessions require sign-in again.
 
-Public registrations do not create Cognito users, ERP accounts or credentials. The existing form password fields are validated then discarded. Approval now records an audited decision only. Future activation must set a new password using Cognito. Do not promise that a submitted registration password will work later.
+Public registrations do not create Cognito users, ERP accounts or credentials. Password and confirmation are optional legacy registration fields; if either is supplied both are validated, then discarded. Customer/patient forms do not require passwords. Approval records an audited decision only. Future activation must set a new password using Cognito.
 
 ## HTTP contracts
 
@@ -63,6 +65,7 @@ All paths below have `/api` prefix. See Swagger for multipart DTOs and validatio
 | GET `/admin/registrations/summary?kind=patient` | Database `{pending,approved,rejected}` counts independent of pagination |
 | GET `/admin/registrations/:id` | Complete `{record}`, safe typed fields, file metadata, `readOnly:false`, `activationPending:true` |
 | GET `/documents/:id` | Record-authorized 60-second signed attachment URL, `Cache-Control:no-store` |
+| GET `/documents/:id/preview` | Same authorization; 60-second inline PDF/JPEG/PNG/WEBP URL |
 | POST `/auth/login` | Existing Cognito username/password; access token/session user or supported MFA challenge |
 | POST `/auth/challenge` | Challenge name/session/username/code |
 | GET `/auth/me` | Verified ERP session user |

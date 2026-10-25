@@ -94,18 +94,68 @@ describe('Document validation and reliable uploads', () => {
     expect(prisma.auditEvent.create).toHaveBeenCalledTimes(2);
     expect(storage.signedDownload).toHaveBeenCalledTimes(2);
   });
+  it.each(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'])('authorizes an inline preview for %s without changing the normal download', async contentType => {
+    prisma.document.findUnique.mockResolvedValue({ id: 'doc', objectKey: 'key', originalName: 'proof', versionId: 'v1', contentType, registration: { ownerId: 'owner', status: 'PENDING' } });
+    const admin = { id: 'admin', role: 'SUPER_ADMIN', state: 'ACTIVE' } as any;
+    await service.download('doc', admin, true);
+    expect(storage.signedDownload).toHaveBeenLastCalledWith('key', 'proof', 'v1', { contentType });
+    await service.download('doc', admin);
+    expect(storage.signedDownload).toHaveBeenLastCalledWith('key', 'proof', 'v1');
+    await expect(service.download('doc', { id: 'other', role: 'PATIENT', state: 'ACTIVE' } as any, true)).rejects.toMatchObject({ status: 403 });
+  });
+  it('rejects non-previewable content before issuing a URL', async () => {
+    prisma.document.findUnique.mockResolvedValue({ contentType: 'text/html', registration: { status: 'PENDING' } });
+    await expect(service.download('doc', { id: 'admin', role: 'ADMIN', state: 'ACTIVE' } as any, true)).rejects.toMatchObject({ status: 415 });
+    expect(storage.signedDownload).not.toHaveBeenCalled();
+  });
 });
 
 describe('S3 transport security and version reconciliation', () => {
-  const config = { get: (key: string) => ({ S3_BUCKET: 'zenex-international-mrpob', AWS_REGION: 'ap-southeast-2' } as Record<string, string>)[key], optional: () => undefined } as unknown as ConfigService;
+  const config = { get: (key: string) => ({ S3_BUCKET: 'zenex-international-mrpob-files', S3_REGION: 'ap-south-1', AWS_REGION: 'ap-southeast-2' } as Record<string, string>)[key], optional: () => undefined } as unknown as ConfigService;
   afterEach(() => jest.restoreAllMocks());
+  it('uses the Mumbai region even when Cognito and SQS remain in Sydney', async () => {
+    const storage = new S3StorageService(config);
+    const client = (storage as unknown as { client: S3Client }).client;
+    expect(await client.config.region()).toBe('ap-south-1');
+    client.destroy();
+  });
+  it('signs downloads for the new Mumbai bucket with the existing expiry and version', async () => {
+    const storage = new S3StorageService(config);
+    const client = (storage as unknown as { client: S3Client }).client;
+    client.config.credentials = async () => ({ accessKeyId: 'test-key', secretAccessKey: 'test-secret' });
+    try {
+      const url = new URL(await storage.signedDownload('registration/customer/reg/proof.pdf', 'proof.pdf', 'v1'));
+      expect(url.hostname).toBe('zenex-international-mrpob-files.s3.ap-south-1.amazonaws.com');
+      expect(url.searchParams.get('X-Amz-Expires')).toBe('60');
+      expect(url.searchParams.get('versionId')).toBe('v1');
+      expect(url.searchParams.get('response-content-disposition')).toMatch(/^attachment;/);
+      const preview = new URL(await storage.signedDownload('registration/customer/reg/proof.pdf', 'proof.pdf', 'v1', { contentType: 'application/pdf' }));
+      expect(preview.searchParams.get('response-content-disposition')).toBe('inline; filename="proof.pdf"');
+      expect(preview.searchParams.get('response-content-type')).toBe('application/pdf');
+      expect(preview.searchParams.get('X-Amz-Expires')).toBe('60');
+    } finally { client.destroy(); }
+  });
   it('uploads privately with encryption and checksum, without trusting client ACLs', async () => {
     const send = jest.spyOn(S3Client.prototype, 'send').mockResolvedValue({ VersionId: 'v1' } as never);
     const storage = new S3StorageService(config);
     await storage.put('registration/patient/reg/id.png', Buffer.from('x'), 'image/png', '00'.repeat(32));
     const command = send.mock.calls[0][0] as PutObjectCommand;
-    expect(command.input).toMatchObject({ Bucket: 'zenex-international-mrpob', ServerSideEncryption: 'AES256', ContentType: 'image/png', ChecksumSHA256: expect.any(String) });
+    expect(command.input).toMatchObject({ Bucket: 'zenex-international-mrpob-files', ServerSideEncryption: 'AES256', ContentType: 'image/png', ChecksumSHA256: expect.any(String) });
     expect(command.input.ACL).toBeUndefined();
+  });
+  it('reports expired credentials safely and signs again after the provider recovers', async () => {
+    const storage = new S3StorageService(config);
+    const client = (storage as unknown as { client: S3Client }).client;
+    const failure = Object.assign(new Error('private SDK diagnostics'), { name: 'CredentialsProviderError' });
+    const credentials = jest.fn().mockRejectedValueOnce(failure).mockResolvedValue({ accessKeyId: 'test-key', secretAccessKey: 'test-secret' });
+    client.config.credentials = credentials;
+    try {
+      await expect(storage.signedDownload('key', 'proof.png', 'v1', { contentType: 'image/png' }))
+        .rejects.toMatchObject({ status: 503, code: 'AWS_CREDENTIALS_UNAVAILABLE', message: 'Document storage is temporarily unavailable' });
+      const recovered = new URL(await storage.signedDownload('key', 'proof.png', 'v1', { contentType: 'image/png' }));
+      expect(recovered.searchParams.get('response-content-disposition')).toBe('inline; filename="proof.png"');
+      expect(recovered.searchParams.get('versionId')).toBe('v1');
+    } finally { client.destroy(); }
   });
   it('removes all exact-key versions after an uncertain PUT, preserves adjacent keys and creates no new marker', async () => {
     const commands: any[] = [];

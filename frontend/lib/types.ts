@@ -19,6 +19,7 @@ export type UploadedFile = {
   type: string;
   size: number;
   dataUrl: string;
+  downloadUrl?: string;
 };
 
 export type CustomerRegistrationInput = {

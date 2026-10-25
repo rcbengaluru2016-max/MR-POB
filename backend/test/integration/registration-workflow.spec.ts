@@ -60,7 +60,7 @@ describe('PostgreSQL registration workflow (S3 transport and Cognito verificatio
     process.env.COGNITO_USER_POOL_ID = 'ap-southeast-2_testpool';
     process.env.COGNITO_CLIENT_ID = 'testclient';
     process.env.AWS_REGION = 'ap-southeast-2';
-    process.env.S3_BUCKET = 'zenex-international-mrpob';
+    process.env.S3_BUCKET = 'zenex-international-mrpob-files';
     database = await startTestDatabase();
     const module = await Test.createTestingModule({imports: [AppModule]})
       .overrideProvider(ThrottlerGuard).useValue({canActivate: () => true})
@@ -191,10 +191,16 @@ describe('PostgreSQL registration workflow (S3 transport and Cognito verificatio
   it('enforces actual administrative guards and document record ownership', async () => {
     const created = await submit('patients', patient(), ['idProof']).expect(201);
     const doc = await prisma.document.findFirstOrThrow();
-    for (const endpoint of ['/api/admin/registrations?kind=patient', '/api/admin/registrations/summary?kind=patient', `/api/admin/registrations/${created.body.registrationId}`, `/api/documents/${doc.id}`]) {
+    for (const endpoint of ['/api/admin/registrations?kind=patient', '/api/admin/registrations/summary?kind=patient', `/api/admin/registrations/${created.body.registrationId}`, `/api/documents/${doc.id}`, `/api/documents/${doc.id}/preview`]) {
       await request(app.getHttpServer()).get(endpoint).expect(401);
       await request(app.getHttpServer()).get(endpoint).set('Authorization', 'Bearer invalid').expect(401);
     }
+    const signer = jest.spyOn(storage, 'signedDownload');
+    const preview = await request(app.getHttpServer()).get(`/api/documents/${doc.id}/preview`).set('Authorization', 'Bearer integration-admin').expect(200);
+    expect(preview.body.expiresIn).toBe(60);
+    expect(signer).toHaveBeenLastCalledWith(doc.objectKey, doc.originalName, doc.versionId, { contentType: 'application/pdf' });
+    signer.mockRestore();
+    await request(app.getHttpServer()).get(`/api/documents/${doc.id}/preview`).set('Authorization', 'Bearer integration-user').expect(403);
     await request(app.getHttpServer()).get('/api/admin/registrations?kind=patient').set('Authorization', 'Bearer integration-user').expect(403);
     await request(app.getHttpServer()).get(`/api/documents/${doc.id}`).set('Authorization', 'Bearer integration-user').expect(403);
     await prisma.registration.update({where: {id: created.body.registrationId}, data: {ownerId: ordinary.id}});

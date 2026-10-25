@@ -16,7 +16,8 @@ jobs:
       COGNITO_USER_POOL_ID: ap-southeast-2_testpool
       COGNITO_CLIENT_ID: testclient
       AWS_REGION: ap-southeast-2
-      S3_BUCKET: zenex-international-mrpob
+      S3_REGION: ap-south-1
+      S3_BUCKET: zenex-international-mrpob-files
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

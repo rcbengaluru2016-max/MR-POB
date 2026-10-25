@@ -17,8 +17,9 @@
         {"name": "NODE_ENV", "value": "production"},
         {"name": "PORT", "value": "3001"},
         {"name": "FRONTEND_ORIGIN", "value": "https://erp.example.com"},
-        {"name": "AWS_REGION", "value": "ap-southeast-2"},
-        {"name": "S3_BUCKET", "value": "zenex-international-mrpob"}
+        {"name": "AWS_REGION", "value": "ap-south-1"},
+        {"name": "S3_REGION", "value": "ap-south-1"},
+        {"name": "S3_BUCKET", "value": "zenex-international-mrpob-files"}
       ],
       "secrets": [
         {"name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:ACCOUNT_ID:secret:zenex/backend:databaseUrl::"},

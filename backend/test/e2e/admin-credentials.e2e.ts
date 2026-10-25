@@ -5,7 +5,7 @@ test('Admin credentials create and sign in through separate dashboards',async({p
   await page.locator('[name="username"]').fill('browser-admin');
   await page.locator('[name="password"]').fill('BrowserPass123');
   await page.getByRole('button', {name: 'LOGIN', exact: true}).click();
-  await expect(page).toHaveURL(/\/super-admin\/approvals$/);
+  await expect(page).toHaveURL(/\/super-admin\/dashboard$/);
   const accountListResponse = page.waitForResponse(response => response.url().endsWith('/api/super-admin/accounts') && response.request().method() === 'GET', {timeout: 180_000});
   await page.goto('/super-admin/users');
   expect((await accountListResponse).status()).toBe(200);

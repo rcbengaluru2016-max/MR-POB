@@ -40,7 +40,7 @@ Frontend route adapters preserve existing multipart URLs and lowercase pending_v
 
 ## Reliability and deployment
 
-S3 bucket `zenex-international-mrpob`, region `ap-southeast-2`, prefixes `registration/customer|company|patient/{registrationId}/{uuid}.{ext}`. Private bucket, role-based SDK v3, explicit encryption, SHA256 and version tracking. Cleanup uses durable manifests and a bounded periodic Nest worker, with conditional leasing in PostgreSQL, retries and object-version deletes. No Redis or SQS justified for this synchronous task. ECS deployments need WAF/shared edge throttling in addition to per-process rate limits. Infrastructure examples, migration, health checks, structured redacted logs, optional Sentry, CI, and backup runbook live inside backend.
+S3 bucket `zenex-international-mrpob-files`, region `ap-south-1`, prefixes `registration/customer|company|patient/{registrationId}/{uuid}.{ext}`. Private bucket, role-based SDK v3, explicit encryption, SHA256 and version tracking. Cleanup uses durable manifests and a bounded periodic Nest worker, with conditional leasing in PostgreSQL, retries and object-version deletes. No Redis or SQS justified for this synchronous task. ECS deployments need WAF/shared edge throttling in addition to per-process rate limits. Infrastructure examples, migration, health checks, structured redacted logs, optional Sentry, CI, and backup runbook live inside backend.
 
 ## Verification plan
 

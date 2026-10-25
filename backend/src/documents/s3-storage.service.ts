@@ -1,15 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectVersionsCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ConfigService } from '../config/config.service';
 
 @Injectable()
 export class S3StorageService {
+  private readonly logger = new Logger(S3StorageService.name);
   private readonly client: S3Client;
   private readonly bucket: string;
   constructor(config: ConfigService) {
     this.bucket = config.get('S3_BUCKET');
-    this.client = new S3Client({ region: config.get('AWS_REGION'), maxAttempts: 3,
+    this.client = new S3Client({ region: config.get('S3_REGION'), maxAttempts: 3,
       ...(config.optional('S3_ENDPOINT') ? { endpoint: config.optional('S3_ENDPOINT'), forcePathStyle: true } : {}),
       requestHandler: { connectionTimeout: 5000, requestTimeout: 120000 },
     });
@@ -40,11 +41,24 @@ export class S3StorageService {
     // Unversioned objects are returned with VersionId="null" and deleted above.
     // Do not issue a plain DELETE here: that creates a new marker in versioned buckets.
   }
-  async signedDownload(objectKey: string, filename: string, versionId?: string | null) {
-    return getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.bucket, Key: objectKey, VersionId: versionId ?? undefined,
-      ResponseContentDisposition: `attachment; filename="${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}"`,
-      ResponseCacheControl: 'private, no-store',
-    }), { expiresIn: 60 });
+  async signedDownload(objectKey: string, filename: string, versionId?: string | null, preview?: { contentType: string }) {
+    try {
+      return await getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.bucket, Key: objectKey, VersionId: versionId ?? undefined,
+        ResponseContentDisposition: `${preview ? 'inline' : 'attachment'}; filename="${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}"`,
+        ...(preview ? { ResponseContentType: preview.contentType } : {}),
+        ResponseCacheControl: 'private, no-store',
+      }), { expiresIn: 60 });
+    } catch (error) {
+      // Keep SDK errors, credentials and signed URLs out of HTTP responses and logs.
+      // The provider reloads renewed local login credentials on a subsequent request.
+      if (error instanceof Error && ['CredentialsProviderError', 'TokenProviderError'].includes(error.name)) {
+        this.logger.error(process.env.NODE_ENV === 'production'
+          ? 'AWS credentials unavailable for document signing; check the task role credential provider.'
+          : 'AWS credentials unavailable for document signing. Renew the configured profile with aws login --profile <AWS_PROFILE>, then retry.');
+        throw Object.assign(new ServiceUnavailableException('Document storage is temporarily unavailable'), { code: 'AWS_CREDENTIALS_UNAVAILABLE' });
+      }
+      throw error;
+    }
   }
   async healthy() { await this.client.send(new ListObjectVersionsCommand({ Bucket: this.bucket, Prefix: 'registration/customer/', MaxKeys: 1 }), { abortSignal: AbortSignal.timeout(5000) }); }
 }

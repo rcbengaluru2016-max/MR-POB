@@ -60,6 +60,16 @@ describe('registration submission HTTP validation', () => {
     expect(submit).toHaveBeenLastCalledWith('patient', expect.anything(), [], 'test-idempotency-key-123');
   });
 
+  it.each([['patients', patientInput()], ['customers', customerInput()]])('accepts the current password-free %s form', async (path, input) => {
+    const { password, confirmPassword, ...fields } = input;
+    await send(path, fields).expect(201);
+  });
+
+  it('rejects a supplied password without its confirmation', async () => {
+    const { confirmPassword, ...fields } = patientInput();
+    await send('patients', fields).expect(400);
+  });
+
   it('rejects a file above 5 MiB before dispatching registration storage', async () => {
     await send('patients', patientInput() as unknown as Record<string, unknown>)
       .attach('idProof', Buffer.alloc(5 * 1024 * 1024 + 1), { filename: 'oversize.pdf', contentType: 'application/pdf' })

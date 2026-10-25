@@ -4,7 +4,7 @@ import { Global, Injectable, Module } from '@nestjs/common';
 export class ConfigService {
   get(key: string): string {
     const defaults: Record<string, string> = {
-      PORT: '3001', AWS_REGION: 'ap-southeast-2', S3_BUCKET: 'zenex-international-mrpob',
+      PORT: '3001', AWS_REGION: 'ap-southeast-2', S3_REGION: 'ap-south-1', S3_BUCKET: 'zenex-international-mrpob-files',
       FRONTEND_ORIGIN: 'http://localhost:3000', NODE_ENV: 'development',
     };
     const value = process.env[key] ?? defaults[key];
@@ -25,8 +25,8 @@ export class ConfigService {
     if (this.get('IDEMPOTENCY_SECRET').length < 32) throw new Error('IDEMPOTENCY_SECRET must contain at least 32 characters');
     this.get('COGNITO_USER_POOL_ID');
     this.get('COGNITO_CLIENT_ID');
-    if (this.get('AWS_REGION') !== 'ap-southeast-2' || this.get('S3_BUCKET') !== 'zenex-international-mrpob') {
-      throw new Error('Use the existing Sydney registration bucket');
+    if (this.get('S3_REGION') !== 'ap-south-1' || this.get('S3_BUCKET') !== 'zenex-international-mrpob-files') {
+      throw new Error('Use the Mumbai registration bucket zenex-international-mrpob-files');
     }
     if (this.optional('S3_ENDPOINT') && this.get('NODE_ENV') === 'production') throw new Error('Custom S3 endpoints are development-only');
     const origin = new URL(this.get('FRONTEND_ORIGIN'));

@@ -13,6 +13,7 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   experimental: {
     agentFeedback: true,
+    proxyClientMaxBodySize: "32mb",
   },
   cacheComponents: true,
   partialPrefetching: true,

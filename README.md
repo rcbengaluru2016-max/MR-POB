@@ -1,5 +1,7 @@
 # Zenex International ERP frontend
 
+For the current AWS-backed application, use the [verified backend and frontend startup guide](backend/docs/local-development.md). The prototype credentials and local-store behavior described below apply only when `BACKEND_API_URL` is absent.
+
 Next.js + React + TypeScript frontend for the Zenex registration → approval → master → account workflow.
 
 ## What is already installed in this project

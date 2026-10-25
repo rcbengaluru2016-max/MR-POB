@@ -1,9 +1,11 @@
 import { cookies } from "next/headers";
 import type { SessionUser } from "@/lib/types";
 import { SESSION_COOKIE, readSessionToken, signSession } from "./session-token";
+import { ACCESS_COOKIE, backendEnabled, backendUser } from "./backend-client";
 
 export async function getSession() {
   const jar = await cookies();
+  if (backendEnabled()) return backendUser(jar.get(ACCESS_COOKIE)?.value);
   return readSessionToken(jar.get(SESSION_COOKIE)?.value);
 }
 

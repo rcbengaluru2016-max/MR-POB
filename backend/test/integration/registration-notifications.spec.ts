@@ -41,7 +41,7 @@ describe('PostgreSQL registration decisions and durable WhatsApp delivery (mock 
     process.env.NODE_ENV = 'test';
     process.env.IDEMPOTENCY_SECRET = 'integration-notifications-only-secret-32-characters';
     process.env.COGNITO_USER_POOL_ID = 'ap-southeast-2_testpool'; process.env.COGNITO_CLIENT_ID = 'testclient';
-    process.env.AWS_REGION = 'ap-southeast-2'; process.env.S3_BUCKET = 'zenex-international-mrpob';
+    process.env.AWS_REGION = 'ap-southeast-2'; process.env.S3_BUCKET = 'zenex-international-mrpob-files';
     process.env.NOTIFICATION_WORKER_ENABLED = 'false';
     database = await startTestDatabase();
     const module = await Test.createTestingModule({ imports: [AppModule] })

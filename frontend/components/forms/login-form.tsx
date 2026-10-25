@@ -19,6 +19,8 @@ export function LoginForm() {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaCode, setMfaCode] = useState("");
   const [mfaBusy, setMfaBusy] = useState(false);
+  const [setupSecret, setSetupSecret] = useState("");
+  const [mfaMethod, setMfaMethod] = useState("");
   const form = useForm<Values>({
     resolver: zodResolver(loginSchema),
     defaultValues: { username: "", password: "" },
@@ -38,6 +40,8 @@ export function LoginForm() {
         return;
       }
       if (data.requiresMfa) {
+        setSetupSecret(data.mfaSetup ? data.secretCode ?? "" : "");
+        setMfaMethod(data.mfaMethod ?? "");
         setMfaRequired(true);
         return;
       }
@@ -87,9 +91,12 @@ export function LoginForm() {
   return (
     <form className="space-y-4" onSubmit={mfaRequired ? verifyMfa : form.handleSubmit(onSubmit)}>
       {mfaRequired ? (
-        <Field label="Authenticator code">
+        <div className="space-y-4">
+        {setupSecret ? <div className="rounded-lg border border-line bg-panel p-4 text-sm"><p>Add a new account in your authenticator app using this setup key, then enter its six-digit code.</p><code className="mt-3 block break-all select-all font-mono">{setupSecret}</code></div> : null}
+        <Field label={mfaMethod === "SMS_MFA" ? "SMS verification code" : "Authenticator code"}>
           <TextInput autoComplete="one-time-code" inputMode="numeric" maxLength={6} value={mfaCode} onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6))} />
         </Field>
+        </div>
       ) : <>
         <Field label="Username / Master Code" error={form.formState.errors.username?.message}>
           <TextInput autoComplete="username" {...form.register("username")} />

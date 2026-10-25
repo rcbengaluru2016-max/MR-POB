@@ -18,10 +18,30 @@ async function main() {
   process.env.COGNITO_USER_POOL_ID = 'ap-southeast-2_testpool';
   process.env.COGNITO_CLIENT_ID = 'testclient';
   process.env.AWS_REGION = 'ap-southeast-2';
-  process.env.S3_BUCKET = 'zenex-international-mrpob';
+  process.env.S3_BUCKET = 'zenex-international-mrpob-files';
   const database = await startTestDatabase();
   const cognito = new TestCognito();
-  Object.defineProperty(CognitoIdentityProviderClient.prototype, "send", { value: cognito.send, configurable: true });
+  const send = async (command: any) => {
+    const input = command.input;
+    const name = command.constructor.name;
+    if (name === 'InitiateAuthCommand' && ['browser-mfa', 'browser-setup'].includes(input.AuthParameters.USERNAME)) {
+      if (input.AuthParameters.PASSWORD !== 'BrowserPass123') throw new Error('Invalid credentials');
+      const setup = input.AuthParameters.USERNAME === 'browser-setup';
+      return { ChallengeName: setup ? 'MFA_SETUP' : 'SOFTWARE_TOKEN_MFA', Session: setup ? 'setup-session' : 'mfa-session', ChallengeParameters: { USERNAME: input.AuthParameters.USERNAME } };
+    }
+    if (name === 'AssociateSoftwareTokenCommand' && input.Session === 'setup-session') return { Session: 'setup-association', SecretCode: 'JBSWY3DPEHPK3PXP' };
+    if (name === 'VerifySoftwareTokenCommand' && input.Session === 'setup-association') {
+      if (input.UserCode !== '123456') throw new Error('Invalid test code');
+      return { Status: 'SUCCESS', Session: 'setup-complete' };
+    }
+    if (name === 'RespondToAuthChallengeCommand') {
+      const setup = input.ChallengeName === 'MFA_SETUP';
+      if (setup ? input.Session !== 'setup-complete' : input.Session !== 'mfa-session' || input.ChallengeResponses.SOFTWARE_TOKEN_MFA_CODE !== '123456') throw new Error('Invalid test challenge');
+      return { AuthenticationResult: { AccessToken: setup ? 'browser-setup-sub' : 'browser-mfa-sub', ExpiresIn: 3600 } };
+    }
+    return cognito.send(command);
+  };
+  Object.defineProperty(CognitoIdentityProviderClient.prototype, "send", { value: send, configurable: true });
   let administrator: ErpUser;
   let officer: ErpUser;
   let ordinary: ErpUser;
@@ -43,6 +63,7 @@ async function main() {
   administrator = await prisma.erpUser.create({data: {cognitoSub: 'browser-admin-sub', username: 'browser-admin', displayName: 'Browser Administrator', role: 'SUPER_ADMIN', state: 'ACTIVE'}});
   officer = await prisma.erpUser.create({data: {cognitoSub: 'browser-officer-sub', username: 'browser-officer', displayName: 'Browser Officer', role: 'ADMIN', state: 'ACTIVE'}});
   ordinary = await prisma.erpUser.create({data: {cognitoSub: 'browser-patient-sub', username: 'browser-patient', displayName: 'Browser Patient User', role: 'PATIENT', state: 'ACTIVE'}});
+  for (const name of ['mfa', 'setup']) await prisma.erpUser.create({ data: { cognitoSub: `browser-${name}-sub`, username: `browser-${name}`, displayName: 'Browser MFA Administrator', role: 'SUPER_ADMIN', state: 'ACTIVE' } });
   for (const user of [administrator, officer, ordinary]) cognito.seed(user.username, user.cognitoSub!, 'BrowserPass123');
   app.get(AuthService).authenticate = async token => {
     const user = await prisma.erpUser.findUnique({where:{cognitoSub:token}});

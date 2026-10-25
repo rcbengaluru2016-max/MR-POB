@@ -44,6 +44,7 @@ export function RegistrationApprovals({ basePath = "/super-admin" }: { basePath?
   const [selectedKind, setSelectedKind] = useState<Kind>("customer");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [summary, setSummary] = useState<Record<Kind, { pending: number; approved: number; rejected: number }> | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -51,9 +52,9 @@ export function RegistrationApprovals({ basePath = "/super-admin" }: { basePath?
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error ?? "Unable to load registration approvals.");
-        return data as { items: Registration[] };
+        return data as { items: Registration[]; summary?: Record<Kind, { pending: number; approved: number; rejected: number }> };
       })
-      .then((data) => setItems(data.items))
+      .then((data) => { setItems(data.items); setSummary(data.summary ?? null); })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
         setError(reason instanceof Error ? reason.message : "Unable to load registration approvals.");
@@ -66,11 +67,11 @@ export function RegistrationApprovals({ basePath = "/super-admin" }: { basePath?
     () => items.filter((item) => item.kind === selectedKind),
     [items, selectedKind],
   );
-  const counts = useMemo(() => ({
+  const counts = useMemo(() => summary?.[selectedKind] ?? ({
     pending: selectedItems.filter((item) => item.status === "pending_verification" || item.status === "submitted").length,
     approved: selectedItems.filter((item) => item.status === "approved").length,
     rejected: selectedItems.filter((item) => item.status === "rejected").length,
-  }), [selectedItems]);
+  }), [selectedItems, selectedKind, summary]);
 
   return (
     <div>
