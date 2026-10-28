@@ -5,6 +5,8 @@ import { AuthService } from '../src/auth/auth.service';
 import { ConfigService } from '../src/config/config.service';
 import { PrismaService } from '../src/database/prisma.service';
 import { AdminGuard, CognitoGuard } from '../src/auth/auth.guard';
+import { CognitoAccountsService } from '../src/accounts/cognito-accounts.service';
+import { hashRegistrationPassword } from '../src/auth/registration-password';
 
 describe('Cognito authentication and database authority', () => {
   let auth: AuthService;
@@ -14,11 +16,42 @@ describe('Cognito authentication and database authority', () => {
   beforeEach(() => {
     verify = jest.fn().mockResolvedValue({ sub: 'immutable-sub', 'cognito:groups': ['SUPER_ADMIN'] });
     jest.spyOn(CognitoJwtVerifier, 'create').mockReturnValue({ verify } as any);
-    prisma = { erpUser: { findFirst: jest.fn().mockResolvedValue(user), findUnique: jest.fn().mockResolvedValue(user) }, registration: { findFirst: jest.fn() } };
+    prisma = { erpUser: { findFirst: jest.fn().mockResolvedValue(user), findUnique: jest.fn().mockResolvedValue(user), update: jest.fn().mockResolvedValue(user) }, registration: { findFirst: jest.fn() } };
     const config = { get: (key: string) => ({ AWS_REGION: 'ap-southeast-2', COGNITO_USER_POOL_ID: 'ap-southeast-2_pool', COGNITO_CLIENT_ID: 'client' } as Record<string, string>)[key], optional: () => undefined } as unknown as ConfigService;
     auth = new AuthService(config, prisma as PrismaService);
   });
   afterEach(() => jest.restoreAllMocks());
+  it('denies a password-only Super Admin JWT even if Cognito MFA preferences have been disabled', async () => {
+    const superUser = { ...user, role: 'SUPER_ADMIN' };
+    prisma.erpUser.findUnique.mockResolvedValue(superUser);
+    prisma.auditEvent = { findFirst: jest.fn().mockResolvedValue(null) };
+    await expect(auth.authenticate('password-only-token')).rejects.toBeInstanceOf(ForbiddenException);
+    prisma.auditEvent.findFirst.mockResolvedValue({ id: 'server-recorded-MFA' });
+    await expect(auth.authenticate('verified-MFA-token')).resolves.toEqual(superUser);
+  });
+  it.each([undefined, 'provider-setup'])('completes server-held Super Admin MFA enrollment with provider session %s', async providerSession => {
+    const superUser = { ...user, role: 'SUPER_ADMIN' };
+    prisma.erpUser.findFirst.mockResolvedValue(superUser); prisma.erpUser.findUnique.mockResolvedValue(superUser);
+    let mfaVerified = false;
+    prisma.auditEvent = { findFirst: jest.fn(async () => mfaVerified ? { id: 'verified' } : null), create: jest.fn(async () => { mfaVerified = true; return { id: 'verified' }; }) };
+    prisma.accountStepUp = { create: jest.fn().mockResolvedValue({ id: 'ab8936e8-1d6a-41e9-9883-d5e04ae418bb' }) };
+    const config = { get: (key: string) => ({ AWS_REGION: 'ap-southeast-2', COGNITO_USER_POOL_ID: 'ap-southeast-2_pool', COGNITO_CLIENT_ID: 'client', IDEMPOTENCY_SECRET: 'test-encryption-secret-at-least-32-characters' } as Record<string, string>)[key], optional: () => undefined } as unknown as ConfigService;
+    auth = new AuthService(config, prisma);
+    const send = jest.spyOn(CognitoIdentityProviderClient.prototype, 'send').mockResolvedValueOnce({ AuthenticationResult: { AccessToken: 'password-only-token', ExpiresIn: 3600 } } as never).mockResolvedValueOnce({ Session: providerSession, SecretCode: 'setup-secret' } as never);
+    const result = await auth.login(superUser.username, 'secret');
+    expect(result).toMatchObject({ challengeName: 'MFA_SETUP', session: 'erp-setup.ab8936e8-1d6a-41e9-9883-d5e04ae418bb' });
+    expect(result).not.toHaveProperty('accessToken');
+    expect(JSON.stringify(prisma.accountStepUp.create.mock.calls)).not.toContain('password-only-token');
+    await expect(auth.authenticate('password-only-token')).rejects.toBeInstanceOf(ForbiddenException);
+    prisma.accountStepUp.updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    prisma.accountStepUp.findUniqueOrThrow = jest.fn().mockResolvedValue({ id: 'ab8936e8-1d6a-41e9-9883-d5e04ae418bb', ...prisma.accountStepUp.create.mock.calls[0][0].data });
+    prisma.erpUser.update.mockResolvedValue(superUser);
+    send.mockResolvedValueOnce({ Status: 'SUCCESS' } as never).mockResolvedValueOnce({} as never);
+    const completed = await auth.challenge({ username: superUser.username, challengeName: 'MFA_SETUP', session: result.session!, code: '123456' });
+    expect((send.mock.calls[2][0] as any).input).toEqual({ ...(providerSession ? { Session: providerSession } : { AccessToken: 'password-only-token' }), UserCode: '123456' });
+    expect(completed).toMatchObject({ accessToken: 'password-only-token', user: { userType: 'super_admin' } });
+    expect(mfaVerified).toBe(true);
+  });
   it.each(['CUSTOMER', 'COMPANY', 'PATIENT'])('requires an owned approved profile for active %s authentication', async role => {
     prisma.erpUser.findUnique.mockResolvedValue({ ...user, role });
     prisma.registration.findFirst.mockResolvedValue(null);
@@ -39,6 +72,21 @@ describe('Cognito authentication and database authority', () => {
     prisma.erpUser.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ ...user, state: 'INACTIVE' });
     await expect(auth.authenticate('unbound')).rejects.toBeInstanceOf(ForbiddenException);
     await expect(auth.authenticate('inactive')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+  it('exposes only safe database profile metadata for dashboard account details', () => {
+    const profile = auth.session({ ...user, email: 'profile@example.test', createdAt: new Date('2026-10-20T10:00:00Z'), lastLoginAt: new Date('2026-10-26T12:00:00Z') } as any);
+    expect(profile).toMatchObject({ email: 'profile@example.test', createdAt: '2026-10-20T10:00:00.000Z', lastLoginAt: '2026-10-26T12:00:00.000Z', userType: 'admin' });
+    expect(profile).not.toHaveProperty('cognitoSub');
+    expect(profile).not.toHaveProperty('password');
+  });
+  it('rejects deleted users and sessions issued before deactivation/reset, even after reactivation', async () => {
+    prisma.erpUser.findUnique.mockResolvedValueOnce({ ...user, deletedAt: new Date() });
+    await expect(auth.authenticate('deleted')).rejects.toBeInstanceOf(ForbiddenException);
+    prisma.erpUser.findUnique.mockResolvedValue({ ...user, tokensValidAfter: new Date('2026-10-26T10:00:00Z') });
+    verify.mockResolvedValue({ sub: user.cognitoSub, auth_time: Date.parse('2026-10-26T09:59:59Z') / 1000, iat: Date.parse('2026-10-26T10:00:05Z') / 1000 });
+    await expect(auth.authenticate('refreshed-old-session')).rejects.toBeInstanceOf(ForbiddenException);
+    verify.mockResolvedValue({ sub: user.cognitoSub, auth_time: Date.parse('2026-10-26T10:00:01Z') / 1000 });
+    await expect(auth.authenticate('fresh-login')).resolves.toEqual(expect.objectContaining({ id: user.id }));
   });
   it('handles Cognito MFA without returning a usable ERP token before completion', async () => {
     jest.spyOn(CognitoIdentityProviderClient.prototype, 'send').mockResolvedValueOnce({ ChallengeName: 'SOFTWARE_TOKEN_MFA', Session: 'challenge', ChallengeParameters: { USER_ID_FOR_SRP: 'canonical' } } as never).mockResolvedValueOnce({ AuthenticationResult: { AccessToken: 'signed', ExpiresIn: 3600 } } as never);
@@ -73,8 +121,39 @@ describe('Cognito authentication and database authority', () => {
   it('rejects inactive and unlinked accounts before calling Cognito', async () => {
     const send = jest.spyOn(CognitoIdentityProviderClient.prototype, 'send');
     prisma.erpUser.findFirst.mockResolvedValueOnce({ ...user, state: 'INACTIVE' }).mockResolvedValueOnce({ ...user, cognitoSub: null });
-    await expect(auth.login('admin', 'secret')).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(auth.login('admin', 'secret')).rejects.toMatchObject({ response: { code: 'ACCOUNT_INACTIVE' } });
     await expect(auth.login('admin', 'secret')).rejects.toBeInstanceOf(UnauthorizedException);
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it('preserves a Company Admin registration password and Master Code through first-login Cognito MFA', async () => {
+    const company = { ...user, id: 'company-owner', username: 'ZI0012', role: 'COMPANY', cognitoSub: null };
+    const password = 'OriginalRegistration123';
+    const profile = { id: 'REG-COM-ZI0007', passwordHash: await hashRegistrationPassword(password) };
+    prisma.erpUser.findFirst.mockResolvedValue(company);
+    prisma.registration.findFirst.mockResolvedValue(profile);
+    const linked = { ...company, cognitoSub: 'company-sub' };
+    const tx = { $queryRaw: jest.fn(), erpUser: { findUniqueOrThrow: jest.fn().mockResolvedValueOnce(company).mockResolvedValueOnce(linked), update: jest.fn() }, registration: { update: jest.fn() } };
+    prisma.$transaction = jest.fn(async (callback: (client: unknown) => Promise<unknown>) => callback(tx));
+    const identities = { password: jest.fn(async (_account: unknown, _password: string, bind: (sub: string) => Promise<void>) => bind('company-sub')) };
+    const config = { get: (key: string) => ({ AWS_REGION: 'ap-southeast-2', COGNITO_USER_POOL_ID: 'ap-southeast-2_pool', COGNITO_CLIENT_ID: 'client' } as Record<string, string>)[key], optional: () => undefined } as unknown as ConfigService;
+    auth = new AuthService(config, prisma, identities as unknown as CognitoAccountsService);
+    const send = jest.spyOn(CognitoIdentityProviderClient.prototype, 'send').mockResolvedValueOnce({ ChallengeName: 'SOFTWARE_TOKEN_MFA', Session: 'company-challenge' } as never);
+    expect(await auth.login('ZI0012', password)).toEqual({ challengeName: 'SOFTWARE_TOKEN_MFA', session: 'company-challenge', username: 'ZI0012' });
+    expect(identities.password).toHaveBeenCalledWith(company, password, expect.any(Function));
+    expect(tx.erpUser.update).toHaveBeenCalledWith({ where: { id: company.id }, data: { cognitoSub: 'company-sub' } });
+    expect(tx.registration.update).toHaveBeenCalledWith({ where: { id: profile.id }, data: { passwordHash: null } });
+    expect((send.mock.calls[0][0] as any).input.AuthParameters).toMatchObject({ USERNAME: 'ZI0012', PASSWORD: password });
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it('does not create a Company identity for the wrong registration password', async () => {
+    prisma.erpUser.findFirst.mockResolvedValue({ ...user, username: 'ZI0012', role: 'COMPANY', cognitoSub: null });
+    prisma.registration.findFirst.mockResolvedValue({ id: 'registration', passwordHash: await hashRegistrationPassword('OriginalPassword123') });
+    const identities = { password: jest.fn() };
+    const config = { get: (key: string) => ({ AWS_REGION: 'ap-southeast-2', COGNITO_USER_POOL_ID: 'ap-southeast-2_pool', COGNITO_CLIENT_ID: 'client' } as Record<string, string>)[key], optional: () => undefined } as unknown as ConfigService;
+    auth = new AuthService(config, prisma, identities as unknown as CognitoAccountsService);
+    await expect(auth.login('ZI0012', 'WrongPassword123')).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(identities.password).not.toHaveBeenCalled();
   });
 });

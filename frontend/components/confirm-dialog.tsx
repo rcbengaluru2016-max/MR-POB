@@ -70,7 +70,7 @@ export function ConfirmDialog({
         aria-busy={busy}
         tabIndex={-1}
         ref={dialogRef}
-        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
       >
         <h3 id="confirm-dialog-title" className="text-lg font-semibold text-foreground">{title}</h3>
         <p id="confirm-dialog-description" className="mt-2 text-sm text-muted">{description}</p>

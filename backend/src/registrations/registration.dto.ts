@@ -20,13 +20,13 @@ function MatchesPassword() {
 }
 
 export class BaseRegistrationDto {
-  @ApiPropertyOptional({ minLength: 8, maxLength: 256, format: 'password', writeOnly: true, description: 'Optional legacy fields, validated together then discarded. Account activation sets a new Cognito password.' })
-  @ValidateIf(input => input.password !== undefined || input.confirmPassword !== undefined)
+  @ApiPropertyOptional({ minLength: 8, maxLength: 256, format: 'password', writeOnly: true, description: 'Required for Company Admin; optional for password-free Customer/Patient forms. Stored only as a one-way verifier until the first approved Cognito login.' })
+  @ValidateIf(input => input instanceof CompanyRegistrationDto || input.password !== undefined || input.confirmPassword !== undefined)
   @IsString() @MinLength(8) @MaxLength(256) @Matches(/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)[\s\S]+$/, { message: 'Password must contain uppercase, lowercase and a number' })
   password!: string;
 
   @ApiPropertyOptional({ format: 'password', writeOnly: true })
-  @ValidateIf(input => input.password !== undefined || input.confirmPassword !== undefined)
+  @ValidateIf(input => input instanceof CompanyRegistrationDto || input.password !== undefined || input.confirmPassword !== undefined)
   @IsString() @MaxLength(256) @MatchesPassword()
   confirmPassword!: string;
 
@@ -86,7 +86,7 @@ export class SummaryQueryDto {
 }
 
 export class SubmissionResponseDto {
-  @ApiProperty({ example: 'REG-CUS-a21ed864-6b44-4632-9251-2d7ad50bd290' }) registrationId!: string;
+  @ApiProperty({ example: 'REG-CUS-ZI0001' }) registrationId!: string;
   @ApiProperty({ enum: RegistrationStatus, example: 'PENDING' }) status!: RegistrationStatus;
 }
 

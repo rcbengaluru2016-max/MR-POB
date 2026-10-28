@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getStore } from "@/lib/server/store";
+import { refreshStore } from "@/lib/server/store";
 import { isAdminSession } from "@/lib/server/super-admin";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -10,7 +10,7 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  const store = await getStore();
+  const store = await refreshStore();
   const registration = store.registrations.find((item) => item.id === id && item.status === "approved");
   if (!registration) return NextResponse.json({ error: "Approved registration not found." }, { status: 404 });
 
@@ -35,5 +35,6 @@ export async function GET(_request: Request, context: RouteContext) {
       lastLoginAt: account.lastLoginAt,
     } : null,
     activationMessage: null,
+    notificationStatus: store.registrationNotifications?.find((item) => item.registrationId === id)?.status ?? "NOT_CONFIGURED",
   });
 }

@@ -6,7 +6,7 @@ import type { AccountRecord } from "@/lib/types";
 import type { AppStore } from "./store";
 
 function backendContext(session: SessionUser) {
-  const account: AccountRecord = { ...session, passwordHash: "", passwordSalt: "", status: "active", createdAt: "", mfaEnabled: true, passwordChangeRequired: false };
+  const account: AccountRecord = { ...session, passwordHash: "", passwordSalt: "", status: "active", createdAt: session.createdAt ?? "", mfaEnabled: true, passwordChangeRequired: false };
   const store: AppStore = { counters: { customerReg: 0, companyReg: 0, patientReg: 0, customerMaster: 0, companyMaster: 0, patientMaster: 0 }, accounts: [account], audit: [], registrations: [], masters: [], companyEmployees: [], companyProducts: [], companySpecialRates: [], companyOrders: [], emails: [], passwordResetTokens: [], registrationUploads: [], customerActivationChallenges: [], superAdminPasswordChangeChallenges: [] };
   return { account, store, session };
 }

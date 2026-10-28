@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { readSessionToken, SESSION_COOKIE } from "@/lib/server/session-token";
-import { ACCESS_COOKIE, backendEnabled, backendUser } from "@/lib/server/backend-client";
+import { ACCESS_COOKIE, CHALLENGE_COOKIE, backendEnabled, backendUser, backendAccountInactive } from "@/lib/server/backend-client";
 import { backendApi } from "@/lib/server/backend-api";
 
 export async function proxy(request: NextRequest) {
@@ -10,6 +10,12 @@ export async function proxy(request: NextRequest) {
   const session = backendEnabled()
     ? await backendUser(request.cookies.get(ACCESS_COOKIE)?.value)
     : readSessionToken(request.cookies.get(SESSION_COOKIE)?.value);
+
+  if (backendEnabled() && !session && await backendAccountInactive(request.cookies.get(ACCESS_COOKIE)?.value)) {
+    const response = NextResponse.redirect(new URL('/account-inactive', request.url));
+    for (const name of [ACCESS_COOKIE, CHALLENGE_COOKIE]) response.cookies.set(name, '', { path: '/', maxAge: 0 });
+    return response;
+  }
 
   if (pathname.startsWith("/super-admin") && session?.userType !== "super_admin") {
     return NextResponse.redirect(new URL(session ? "/access-denied" : "/login", request.url));

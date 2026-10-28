@@ -4,13 +4,14 @@ import { TestCognito } from '../fixtures/cognito';
 import { ForbiddenException, INestApplication, UnauthorizedException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ThrottlerGuard } from '@nestjs/throttler';
-import { ErpUser } from '@prisma/client';
+import { ErpUser, PrismaClient } from '@prisma/client';
 import request from 'supertest';
 import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/bootstrap';
 import { AuthService } from '../../src/auth/auth.service';
 import { PrismaService } from '../../src/database/prisma.service';
 import { startTestDatabase } from './database';
+import { AnalyticsService } from '../../src/registrations/analytics.service';
 
 describe('Admin management and shared registrations in PostgreSQL (Cognito transport and JWT verifier replaced only in tests)', () => {
   const cognito = new TestCognito();
@@ -52,13 +53,13 @@ describe('Admin management and shared registrations in PostgreSQL (Cognito trans
     expect(saved).toMatchObject({ username: 'new-admin@example.test', email: 'new-admin@example.test', displayName: 'New Administrator', role: 'ADMIN', state: 'ACTIVE', createdById: superAdmin.id, cognitoSub: expect.any(String) });
     expect(saved.createdAt).toBeInstanceOf(Date); expect(saved.updatedAt).toBeInstanceOf(Date);
     const columns = await prisma.$queryRaw<{ column_name: string }[]>`SELECT column_name FROM information_schema.columns WHERE table_name = 'ErpUser'`;
-    expect(columns.map(row => row.column_name).join(' ')).not.toMatch(/password|secret|token|credential/i);
+    expect(columns.map(row => row.column_name).filter(name => name !== 'tokensValidAfter').join(' ')).not.toMatch(/password|secret|token|credential/i);
     expect(result.body.account.provisioningRequired).toBe(false);
     expect(result.body.account).not.toHaveProperty('cognitoSub');
     expect(await prisma.auditEvent.count({ where: { actorId: superAdmin.id, action: 'ADMIN_ACCOUNT_CREATED' } })).toBe(1);
     await request(app.getHttpServer()).get(`/api/super-admin/accounts/${saved.id}`).set(headers(superAdmin)).expect(200);
     const list = await request(app.getHttpServer()).get('/api/super-admin/accounts?page=1&pageSize=1').set(headers(superAdmin)).expect(200);
-    expect(list.body.total).toBe(2); expect(list.body.items).toHaveLength(1);
+    expect(list.body.total).toBe(3); expect(list.body.items).toHaveLength(1);
     await request(app.getHttpServer()).patch(`/api/super-admin/accounts/${saved.id}/state`).set(headers(superAdmin)).send({ state: 'INACTIVE' }).expect(200);
     expect((await prisma.erpUser.findUniqueOrThrow({ where: { id: saved.id } })).state).toBe('INACTIVE');
   });
@@ -93,7 +94,14 @@ describe('Admin management and shared registrations in PostgreSQL (Cognito trans
     const saved = await prisma.erpUser.findUniqueOrThrow({where: {username: 'retry@example.test'}});
     expect(saved.state).toBe('INACTIVE');
     await create('retry@example.test').expect(409);
-    await request(app.getHttpServer()).post('/api/super-admin/accounts/'+saved.id+'/password').set(headers(superAdmin)).send({password:'InitialPass123!'}).expect(201);
+    // Password writes now require an operation-bound MFA grant and a reset link.
+    const proof = 'x'.repeat(43);
+    const { tokenHash } = await import('../../src/accounts/step-up.service');
+    const { StepUpService } = await import('../../src/accounts/step-up.service');
+    await prisma.accountStepUp.create({ data: { actorId: superAdmin.id, binding: app.get(StepUpService).binding('PASSWORD_RESET', saved.id), encryptedSession: '', username: superAdmin.username, challengeName: 'SOFTWARE_TOKEN_MFA', expiresAt: new Date(Date.now() + 60000), verifiedAt: new Date(), proofHash: tokenHash(proof) } });
+    const link = await request(app.getHttpServer()).post('/api/super-admin/accounts/'+saved.id+'/password-reset-link').set(headers(superAdmin)).send({ stepUpProof: proof }).expect(201);
+    const token = new URLSearchParams(new URL(link.body.resetUrl).hash.slice(1)).get('token');
+    await request(app.getHttpServer()).post('/api/auth/password-reset/complete').send({ token, password: 'InitialPass123!', confirmPassword: 'InitialPass123!' }).expect(201);
     await request(app.getHttpServer()).patch('/api/super-admin/accounts/'+saved.id+'/state').set(headers(superAdmin)).send({state:'ACTIVE'}).expect(200);
     expect(cognito.users.get('retry@example.test')?.enabled).toBe(true);
     cognito.seed('foreign@example.test', 'foreign-sub', 'ForeignPass123!');
@@ -139,15 +147,40 @@ describe('Admin management and shared registrations in PostgreSQL (Cognito trans
     await request(app.getHttpServer()).get('/api/admin/registrations/analytics?period=custom&start=2026-02-30&end=2026-03-01').set(headers(admin)).expect(400);
   });
 
+  it('loads consistent dashboard data when its only connection is busy longer than the interactive transaction deadline', async () => {
+    await seedRegistrations();
+    const url = new URL(database.url);
+    url.searchParams.set('connection_limit', '1');
+    url.searchParams.set('pool_timeout', '10');
+    const limited = new PrismaClient({ datasourceUrl: url.toString() });
+    let blocked: Promise<unknown> | undefined;
+    try {
+      await limited.$connect();
+      // Occupy the only connection beyond Prisma's interactive maxWait=2000ms.
+      blocked = limited.$queryRaw`SELECT 1::int AS marker FROM pg_sleep(3)`.then(value => value);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const service = new AnalyticsService(limited as PrismaService);
+      const dashboards = await Promise.all(Array.from({ length: 4 }, () => service.dashboard({ period: 'custom', start: '2026-10-23', end: '2026-10-23' })));
+      for (const dashboard of dashboards) {
+        expect(dashboard.kpis.total).toEqual({ value: 9, change: 100 });
+        expect(dashboard.statusShare).toEqual({ pending_verification: 3, approved: 3, rejected: 3 });
+        expect(dashboard.trend).toEqual([{ date: '2026-10-23', count: 9 }]);
+      }
+    } finally {
+      await blocked;
+      await limited.$disconnect();
+    }
+  });
+
   it('records decisions atomically, rejects conflicting reviews and immediately updates shared status counts', async () => {
     await seedRegistrations();
     const path = '/api/admin/registrations/patient-PENDING/decision';
     await request(app.getHttpServer()).post(path).send({ action: 'approve' }).expect(401);
     await request(app.getHttpServer()).post(path).set(headers(patient)).send({ action: 'approve' }).expect(403);
-    await request(app.getHttpServer()).post(path).set(headers(admin)).send({ action: 'reject', reason: 'short' }).expect(400);
+    await request(app.getHttpServer()).post(path).set(headers(admin)).send({ action: 'reject', reasonCode: 'OTHER', reasonReviewed: true, reason: 'short' }).expect(400);
     const decisions = await Promise.all([
       request(app.getHttpServer()).post(path).set(headers(admin)).send({ action: 'approve' }),
-      request(app.getHttpServer()).post(path).set(headers(superAdmin)).send({ action: 'reject', reason: 'Documents require correction' }),
+      request(app.getHttpServer()).post(path).set(headers(superAdmin)).send({ action: 'reject', reasonCode: 'OTHER', reasonReviewed: true, reason: 'Documents require correction' }),
     ]);
     expect(decisions.map(r => r.status).sort()).toEqual([201, 409]);
     const saved = await prisma.registration.findUniqueOrThrow({ where: { id: 'patient-PENDING' } });
@@ -158,7 +191,7 @@ describe('Admin management and shared registrations in PostgreSQL (Cognito trans
       expect(summary.body).toEqual({ pending: 0, approved: saved.status === 'APPROVED' ? 2 : 1, rejected: saved.status === 'REJECTED' ? 2 : 1 });
     }
     await request(app.getHttpServer()).post('/api/admin/registrations/missing/decision').set(headers(admin)).send({ action: 'approve' }).expect(404);
-    expect(await prisma.erpUser.count()).toBe(3);
+    expect(await prisma.erpUser.count()).toBe(saved.status === 'APPROVED' ? 4 : 3);
     expect(await prisma.registration.count()).toBe(9);
   });
 });

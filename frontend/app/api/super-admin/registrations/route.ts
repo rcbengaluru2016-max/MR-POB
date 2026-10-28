@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getStore } from "@/lib/server/store";
+import { refreshStore } from "@/lib/server/store";
 import { isAdminSession } from "@/lib/server/super-admin";
 
 const kinds = ["customer", "company", "patient"] as const;
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   if (!kind || !kinds.includes(kind as (typeof kinds)[number])) {
     return NextResponse.json({ error: "Choose a valid registration category." }, { status: 400 });
   }
-  const store = await getStore();
+  const store = await refreshStore();
   const items = store.registrations
     .filter((record) => record.kind === kind && record.status === "approved")
     .flatMap((record) => {
@@ -20,6 +20,7 @@ export async function GET(request: Request) {
       if (!account) return [];
       return [{
         id: record.id,
+        masterCode: account.masterCode,
         kind: record.kind,
         accountStatus: account.status === "active" || account.status === "unlocked" ? "active" : "inactive",
         submittedAt: record.submittedAt,

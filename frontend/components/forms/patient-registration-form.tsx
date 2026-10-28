@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { FileInput } from "@/components/forms/file-input";
 import { TermsDialog } from "@/components/forms/terms-dialog";
@@ -16,6 +16,8 @@ type Values = z.infer<typeof patientRegistrationSchema>;
 
 export function PatientRegistrationForm({ adminMode = false, onCreated }: { adminMode?: boolean; onCreated?: () => void }) {
   const router = useRouter();
+  const [masterCode, setMasterCode] = useState("");
+  const importKey = useRef<string | null>(null);
   const [serverError, setServerError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [termsOpen, setTermsOpen] = useState(false);
@@ -35,6 +37,7 @@ export function PatientRegistrationForm({ adminMode = false, onCreated }: { admi
     setServerError("");
     setSuccessMessage("");
     const formData = new FormData();
+    if (adminMode) formData.set("masterCode", masterCode);
     Object.entries(values).forEach(([key, value]) => {
       if (value instanceof FileList) {
         if (value[0]) formData.append(key, value[0]);
@@ -43,13 +46,13 @@ export function PatientRegistrationForm({ adminMode = false, onCreated }: { admi
     });
     try {
       if (adminMode) formData.set("kind", "patient");
-      const response = await fetch(adminMode ? "/api/super-admin/registrations/single" : "/api/register/patient", { method: "POST", body: formData });
+      const response = await fetch(adminMode ? "/api/super-admin/registrations/single" : "/api/register/patient", { method: "POST", body: formData, headers: adminMode ? { "Idempotency-Key": importKey.current ?? (importKey.current = crypto.randomUUID()) } : {} });
       const data = await response.json();
       if (!response.ok) {
         setServerError(data.error ?? "Registration failed");
         return;
       }
-      if (adminMode) { form.reset(); setSuccessMessage(`Patient registration ${data.registrationId} saved as Pending Verification.`); onCreated?.(); }
+      if (adminMode) { importKey.current = null; setMasterCode(""); form.reset(); setSuccessMessage(`Patient registration ${data.registrationId} approved and added to accounts.`); onCreated?.(); }
       else router.push("/register/success?type=patient");
     } catch {
       setServerError("Unable to submit registration. Check your connection and try again.");
@@ -57,7 +60,8 @@ export function PatientRegistrationForm({ adminMode = false, onCreated }: { admi
   }
 
   return (
-    <form className="space-y-6" onSubmit={form.handleSubmit(onSubmit)}>
+    <form onChange={() => { importKey.current = null; }} className="space-y-6" onSubmit={event => { void form.handleSubmit(onSubmit)(event); }}>
+      {adminMode ? <Field label="Master Code *"><TextInput name="masterCode" value={masterCode} onChange={event => setMasterCode(event.target.value)} required maxLength={128} placeholder="Original Master Code, e.g. C01234" /></Field> : null}
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="Patient Name *" error={form.formState.errors.patientName?.message}>
           <TextInput {...form.register("patientName")} />

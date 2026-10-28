@@ -1,88 +1,73 @@
-# Registration decisions and WhatsApp preparation
+# Registration approval and WhatsApp readiness
 
-## Inspection and scope
+## Approval and storage
 
-The existing backend already stored each registration in `Registration` with one category-specific profile (`CustomerRegistration`, `CompanyRegistration`, or `PatientRegistration`). Documents reference the same registration and private S3 objects. The shared admin registration list, detail, summary and analytics APIs read PostgreSQL. `CognitoGuard` resolves the token subject to an active ERP account; `AdminGuard` allows ADMIN and SUPER_ADMIN; account management remains protected by `SuperAdminGuard`. There is no category-specific permission table: both administrator roles currently review all three categories.
+The backend reuses `Registration` and its existing `CustomerRegistration`, `PatientRegistration`, or `CompanyRegistration` profile. Documents keep their original registration/S3 associations. Approval, the separate sequential Master Code, the approved owner's activation, reviewer/time audit, and the notification outbox insert commit in one PostgreSQL transaction. Approval does not copy profiles into disconnected tables. Repeating a successful approval returns the same saved Master Code without creating another account, audit decision, or notification. Rejection uses structured reasons and 30-day text retention; see [rejection workflow](registration-rejection.md).
 
-The existing decision endpoint already used a conditional PENDING update and transactional audit. It did not generate notification events, provision user identities, or populate another master table. There was no SQS module or notification worker in this backend.
+The active ADMIN/SUPER_ADMIN decision endpoint accepts `{ "action": "approve" }` or `{ "action": "reject", "reasonCode": "INCOMPLETE_INFORMATION" }`. Actor, recipient, Master Code, and notification status cannot be supplied in that body. Customer/Patient/Company approved dashboard APIs reuse the existing profile; `GET /api/registrations/me` remains scoped to the authenticated approved owner and matching role. Authentication and MFA guards are preserved. Company password and account provisioning details are documented with the registration implementation; no password is passed to the notification service.
 
-Frontend inspection (read only): admin approval adapters call `/api/admin/registrations/:id/decision`; shared lists and counts already call Nest. Operational customer/company/patient workflows and some master views still use the frontend's local store. In particular the Super Admin registrations adapter omits a status filter, so it can display pending/rejected records too. Backend approval cannot update that frontend-local store. **No frontend files were changed.** Wiring those remaining views to the approved backend API needs explicit frontend authorization and is outside this implementation.
+## Exact approval templates
 
-## Decision and dashboard contract
+| Kind | Template name | Ordered positional variables |
+| --- | --- | --- |
+| Customer | `customer_registration_approved` | Customer name, Customer Master Code |
+| Patient | `patient_registration_approved` | Patient name, Patient Master Code |
+| Company Admin | `company_admin_approved` | Admin full name, company name, Admin Master Code |
 
-`POST /api/admin/registrations/:id/decision` accepts only `{ "action": "approve" }` or `{ "action": "reject", "reason": "...8–2000 characters..." }`. The authenticated actor is never supplied in the body. The transaction locks the active administrator row, conditionally updates PENDING, stores status/time/reviewer/reason, adds an audit event and inserts a unique notification event. Another concurrent or repeated decision returns 409; unknown registrations return 404. An outbox write failure rolls back the whole decision. SQS/provider calls never occur in this transaction.
+`approvalMessage()` contains the exact requested message text. The outbox payload includes `registrationId`, `registrationType`, `decision`, ordered `variables`, and rendered `message`. Names/company/Master Code are loaded from the saved database profile inside the decision transaction. Passwords, password hashes, and provider credentials are excluded. Rejection payloads contain only the reviewed external reason, applicant name, and type. The registered ten-digit mobile is normalized to `+91...`; there is no independently supplied job destination. Queue bodies contain only `{notificationId}` and the worker loads the authoritative recipient and payload from PostgreSQL.
 
-All lists reuse the original profile and document records. No duplicate masters or accounts are created:
+Before sending an APPROVED event the processor verifies the saved approval and refreshes its profile variables. This also upgrades unsent legacy PENDING/RETRY events that previously had generic payloads. Missing or inconsistent profiles fail as `APPROVED_PROFILE_INCOMPLETE` without sending. Migration does not create historical notification events, and terminal mock/accepted/delivered rows are never automatically replayed.
 
-- `GET /api/admin/registrations?kind=customer&status=APPROVED` — existing filtered list.
-- `GET /api/admin/registrations/approved?kind=customer` — always approved, with the existing pagination contract; company/patient supported identically.
-- `GET /api/admin/registrations/summary?kind=customer` — actual PostgreSQL status totals.
-- `GET /api/registrations/me` — all approved profiles owned by the active authenticated ERP user, matching the user's role. Returns 403 without an approved ownership link; clients cannot choose another owner.
+## Durable delivery and honest status
 
-Customer/company/patient Cognito authentication now also requires an approved registration with matching `ownerId` and category. Existing document access already required active ownership and approval. Approval by itself **does not create a Cognito login or bind an identity**, and the response continues to return `activationPending:true`. Public submission deliberately discards passwords after validation. A separate verified account activation/provisioning policy is needed before newly approved registrants can sign in. Never link accounts automatically by a client-supplied email/phone alone. The owner endpoint works for securely provisioned/bound existing accounts; this task does not invent that activation flow.
+`RegistrationNotification` is both a transactional outbox and delivery ledger. Unique `(registrationId,event)` prevents duplicate approval events. Queue/provider work runs after the approval transaction. A queue or provider outage cannot undo approval, change the Master Code, or create another approved profile.
 
-## Durable notification workflow
-
-`RegistrationNotification` is a transactional outbox and delivery ledger. Unique `(registrationId,event)` prevents duplicate events. The stored recipient is `+91` plus the registration's ten-digit mobile (company uses its normalized admin mobile). There is no separate WhatsApp field today; confirm that registered mobiles are WhatsApp destinations and the required messaging consent before enabling live delivery. Queue bodies contain only `{notificationId}`; workers load recipient, kind, event and payload from PostgreSQL, ignoring extra queue properties.
-
-Template keys are `registration.customer.approved`, `registration.company.approved`, `registration.patient.approved`, and the equivalent `.rejected` keys. Payloads currently contain registration ID, category and decision. Rejection reasons and credentials are excluded. Mock template IDs start with `mock:` and are simulation labels, not vendor-approved templates.
-
-The outbox publisher uses database compare-and-set leases and controlled backoff for queue failures. Pending work is periodically republished until processing reaches a durable state, including after SQS retention expiry. The consumer claims one database row, records its attempt and template before calling a provider, and persists its outcome. Parallel consumers and duplicate SQS messages cannot acquire the same delivery claim. A crash after sending but before persisting the response becomes UNKNOWN, never an automatic resend. This deliberately favors avoiding duplicates over silently risking another delivery.
-
-Delivery statuses:
-
-| Status | Meaning / operator action |
+| Status | Meaning |
 | --- | --- |
-| PENDING | Committed event waiting for publication or consumption |
-| PROCESSING | Claimed with a 60-second lease; provider timeout is 15 seconds |
-| RETRY | Confirmed non-acceptance; scheduled retry |
-| MOCKED | Intended recipient/template/payload recorded; no real delivery |
-| ACCEPTED | Future provider accepted the message; does not mean delivered |
-| DELIVERED | Reserved for verified provider delivery receipts |
-| BLOCKED | Missing approvals/configuration or disabled rejection messages |
-| UNKNOWN | Uncertain response/process crash; reconcile before any resend |
-| FAILED | Permanent rejection, invalid stored mobile, or five exhausted safe attempts |
+| PENDING | Persisted request waiting for the worker; no message sent |
+| PROCESSING | Claimed with a 60-second lease; transport timeout is 15 seconds |
+| RETRY | Definite provider non-acceptance; waiting for a safe retry |
+| MOCKED | Test adapter simulation; no real message sent |
+| ACCEPTED | Reserved for a real provider-confirmed accepted send; not a delivery receipt |
+| DELIVERED | Reserved for an authenticated provider delivery receipt |
+| BLOCKED | Missing configuration/template approval or disabled rejection notification |
+| UNKNOWN | Ambiguous response or worker crash; reconcile before resending |
+| FAILED | Permanent error, invalid destination/profile, or exhausted safe attempts |
+| EXPIRED | Rejection payload and destination erased after 30 days; never sent again |
 
-Safe provider retries use 30/60/120/240-second backoff before the fifth failed attempt; publishing backoff is capped at one hour. Confirmed rate limits can impose a longer retry-after (bounded at one day). Arbitrary exceptions, HTTP responses with undocumented acceptance semantics, and timeouts must never be classified as safe retries. The adapter must honor AbortSignal, use no hidden HTTP retries and keep a stable notification ID as the eventual provider idempotency key if that capability exists.
+The default worker is disabled, so new requests remain PENDING. An explicitly run mock adapter records MOCKED and performs no HTTP call. Neither state means Message Sent. The frontend shows message success only for real ACCEPTED/DELIVERED statuses. No currently implemented adapter can produce either live state.
 
-FAILED and UNKNOWN IDs are exported to the configured DLQ; the database remains authoritative if DLQ export fails. Export acknowledgment failure can duplicate a DLQ ID but never sends a WhatsApp message. Configure the source SQS redrive policy too, so malformed messages and repeated transport/DB errors reach the DLQ. Do not automatically consume/replay the DLQ. BLOCKED is held for operator review; no automatic resends occur after merely changing configuration. MOCKED is terminal and must never automatically become live work.
+Existing worker claims use database compare-and-set leases; concurrent consumers and duplicate SQS messages cannot claim the same send. Before transport the ledger stores attempt number and resolved template. Safe provider retries use 30/60/120/240-second backoff before the fifth attempt; a documented retry-after may extend this to one day. The same notification ID is used as the eventual provider idempotency key. Arbitrary errors, timeouts, and crashes after possible acceptance become UNKNOWN and are never automatically resent. `AbortSignal` is passed to the adapter; a real adapter must honor it and disable hidden transport retries.
 
-There is no public webhook or fake delivery receipt implementation: the provider's receipt authentication, status transitions and reconciliation API are unknown. ACCEPTED/DELIVERED and provider message IDs provide schema support for that future work. The current AtoZ adapter always throws `ATOZ_DOCUMENTATION_REQUIRED` and performs no HTTP requests, even when live flags and placeholder configuration are supplied.
+Publisher failures keep the committed event and retry with bounded backoff. Periodic republication also covers queue retention expiry. FAILED/UNKNOWN IDs are exported to a DLQ; a failed export is retried without resending a WhatsApp message. Configure the source SQS redrive policy for malformed messages and repeated transport/database failures. Do not automatically replay DLQ records. BLOCKED and MOCKED are held terminally; changing an environment flag alone does not release historical work.
 
-## Local and AWS configuration
+## Configuration and enabling real messaging
 
-1. Run `npm ci`, `npm run prisma:generate`, `npm run migrate:deploy`, then `npm run build`. Apply the new migration before running the updated API/worker. Existing decided registrations are deliberately not backfilled, to avoid unexpected historical notifications.
-2. Default `WHATSAPP_PROVIDER=mock`, `WHATSAPP_LIVE_ENABLED=false`, `WHATSAPP_TEMPLATES_APPROVED=false`, `WHATSAPP_REJECTIONS_ENABLED=false`. With the worker disabled, new events stay PENDING. Tests call the processor with a mock provider/queue and a real disposable PostgreSQL database.
-3. Supply `NOTIFICATION_SQS_URL` and `NOTIFICATION_SQS_DLQ_URL`; enable `NOTIFICATION_WORKER_ENABLED=true` in a dedicated worker task and start `npm run start:worker` (or `node dist/notification-worker.js` in the existing runtime image). Keep the API task's worker flag false if running a separate worker. Multiple workers are supported. The standalone worker validates the same database/AWS/Cognito environment as the API.
-4. Use standard or FIFO queues, encrypted at rest, visibility timeout at least 90 seconds, long polling, source retention 4–14 days, longer DLQ retention and redrive `maxReceiveCount` around 5. Match the two queue types. The code supplies FIFO group/deduplication IDs when queue URLs end in `.fifo`. Database deduplication remains necessary beyond FIFO's five-minute deduplication interval. See [AWS visibility documentation](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html) and [AWS outage recovery](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/designing-for-outage-recovery-scenarios.html).
-5. The worker task role needs SendMessage/ReceiveMessage/DeleteMessage on its source queue and SendMessage on its DLQ. Scope KMS permissions to queue keys if required. Use TLS and private VPC SQS endpoints or approved outbound connectivity; the API needs no SQS permissions when its worker is disabled. `infra/notification-queues.example.yaml` and `infra/notification-worker-policy.example.json` are undeployed templates.
-6. Inject RDS credentials and eventual provider secrets from AWS Secrets Manager via the ECS execution role, following the existing `infra/ecs-task-definition.example.json` secret injection pattern. Locally use ignored `.env`; never put secrets in frontend settings. `ATOZ_API_ENDPOINT`, `ATOZ_API_CREDENTIAL` and `ATOZ_SENDER_ID` are **reserved placeholders**, not a claim about the vendor's actual auth fields. Revise these names/shape after receiving its documentation. No static AWS credentials are required; use task IAM roles.
+1. Apply checked-in Prisma migrations before running updated API/worker, regenerate Prisma, then build. Keep the API worker flag false when a dedicated worker is used.
+2. Defaults: `NOTIFICATION_WORKER_ENABLED=false`, `WHATSAPP_PROVIDER=mock`, `WHATSAPP_LIVE_ENABLED=false`, `WHATSAPP_TEMPLATES_APPROVED=false`, `WHATSAPP_REJECTIONS_ENABLED=false`. These send no real WhatsApp messages.
+3. A dedicated worker needs `NOTIFICATION_SQS_URL`, `NOTIFICATION_SQS_DLQ_URL`, and `NOTIFICATION_WORKER_ENABLED=true`; start with `npm run start:worker`. Use matching standard/FIFO queues, encryption, visibility timeout of at least 90 seconds, long polling, source retention of 4–14 days, longer DLQ retention, and redrive around five receives. Existing infrastructure examples are not deployed by this change.
+4. Scope worker IAM to source SendMessage/ReceiveMessage/DeleteMessage and DLQ SendMessage, with required KMS permissions. Use task IAM roles. Inject database and eventual provider secrets from the production secret manager; local `.env` stays ignored. Never expose provider secrets to the browser.
 
-Approved template variables (currently empty in `.env.example`):
+Configure approved provider template IDs with these new canonical variables:
 
 ```
-WHATSAPP_TEMPLATE_REGISTRATION_CUSTOMER_APPROVED
-WHATSAPP_TEMPLATE_REGISTRATION_COMPANY_APPROVED
-WHATSAPP_TEMPLATE_REGISTRATION_PATIENT_APPROVED
-WHATSAPP_TEMPLATE_REGISTRATION_CUSTOMER_REJECTED
-WHATSAPP_TEMPLATE_REGISTRATION_COMPANY_REJECTED
-WHATSAPP_TEMPLATE_REGISTRATION_PATIENT_REJECTED
+WHATSAPP_TEMPLATE_CUSTOMER_REGISTRATION_APPROVED
+WHATSAPP_TEMPLATE_PATIENT_REGISTRATION_APPROVED
+WHATSAPP_TEMPLATE_COMPANY_ADMIN_APPROVED
 ```
 
-## Required from AtoZ Services before activation
+For existing deployments, `WHATSAPP_TEMPLATE_REGISTRATION_CUSTOMER_APPROVED`, `WHATSAPP_TEMPLATE_REGISTRATION_PATIENT_APPROVED`, and `WHATSAPP_TEMPLATE_REGISTRATION_COMPANY_APPROVED` remain fallback aliases. The canonical variable takes precedence. Rejections use shared `registration_rejected`, configured by `WHATSAPP_TEMPLATE_REGISTRATION_REJECTED`. The existing per-kind variables remain fallback aliases and rejection delivery remains disabled by default.
 
-Obtain the provider's authoritative documentation URL/specification and sandbox account; exact endpoint/version and authentication/rotation requirements; sender/account identifiers; six approved template IDs, languages, named or positional parameters, permitted registration fields, optional rejection reason policy, and message consent requirements; timeout/rate-limit/error semantics and retry-after rules; idempotency key support and retention window; message lookup API for uncertain sends; delivery receipt formats, signature validation, replay protection, and supported states.
+`WhatsAppProvider` is the adapter interface. `MockWhatsAppProvider` is the test adapter. `AtoZWhatsAppProvider` deliberately throws `ATOZ_DOCUMENTATION_REQUIRED` without an HTTP call. `ATOZ_API_ENDPOINT`, `ATOZ_API_CREDENTIAL`, and `ATOZ_SENDER_ID` are reserved configuration placeholders; they do not describe a verified vendor API. Setting live flags and placeholder values cannot activate this adapter.
 
-Then implement/test the real adapter against its documented sandbox, add authenticated receipt/reconciliation handling, prove uncertain-response behavior, configure Secrets Manager/approved IDs, decide how to release BLOCKED historical work, and obtain authorization to enable live delivery. Environment flags alone cannot activate the placeholder adapter. No API documentation was supplied, and a public search for the provider name did not identify an authoritative API contract. No template IDs were invented.
+Before real delivery, obtain authoritative provider documentation and sandbox access; endpoint/version/authentication and rotation contract; sender/account details and credentials; all three approved templates, languages, positional parameter rules and provider IDs; rate limits and definite acceptance/error semantics; documented idempotency and retention; lookup/reconciliation API; and delivery receipt authentication, signatures, replay protection and state mapping. Implement the real transport and authenticated receipt/reconciliation handlers, then verify them in the provider sandbox. Confirm that registered numbers are intended WhatsApp destinations and collect required messaging consent. No vendor credentials, IDs, or receipts have been invented here.
 
 ## Investigation and recovery
 
-`GET /api/admin/notifications/registration/:registrationId` and `GET /api/admin/notifications/:id` are restricted to active ADMIN/SUPER_ADMIN accounts. They expose intended recipient/template/payload, attempt history, provider message ID, status and sanitized error code for authorized investigation. No provider secrets or raw response bodies are stored. These reads include PII; use existing private API controls and retention policy. Structured stdout logs contain event ID/status/attempt/error code, not mobile, message payload or credentials.
+Active ADMIN/SUPER_ADMIN accounts can inspect `GET /api/admin/notifications/registration/:registrationId` and `GET /api/admin/notifications/:id` for destination, template, intended variables, attempts, status, sanitized error code and eventual provider message ID. These authorized reads contain registration data. Structured logs contain event ID/status/attempt/error code, without mobile, names, full messages, credentials, or raw provider responses.
 
-Alert on old PENDING/RETRY rows, expired PROCESSING leases, BLOCKED/UNKNOWN/FAILED counts, source/DLQ depth, publisher errors, worker heartbeat/exit and DLQ export lag. Query the ledger for delivery failures; registration counts remain registration status counts, independent of notification outcomes.
-
-There is intentionally no unauthenticated retry/replay endpoint. After config changes, an operator may release a BLOCKED event through an audited database maintenance transaction only after checking `NotificationAttempt` shows no accepted/uncertain send. Do not reset UNKNOWN/MOCKED/ACCEPTED/DELIVERED statuses to PENDING as routine recovery. Confirm acceptance with the provider first; only known non-delivery may be requeued. Redact provider responses and avoid storing excess message content. Define ledger retention with business audit requirements before adding deletion jobs.
+Alert on old PENDING/RETRY rows, expired PROCESSING leases, BLOCKED/UNKNOWN/FAILED counts, queue/DLQ depth, worker health and export lag. An operator may release BLOCKED work using audited maintenance only after verifying no accepted/uncertain send. Never reset UNKNOWN/MOCKED/ACCEPTED/DELIVERED to PENDING as routine recovery. Confirm non-delivery before requeueing ambiguous sends. Define retention according to the business audit policy.
 
 ## Verification
 
-Run `npm run check`, `npm run build`, `npm test` and `npm run test:integration`. The new integration suite uses Supertest, the actual Nest guards/DTOs, real Prisma transactions and PostgreSQL constraints, and mock Cognito verification/SQS/WhatsApp. It induces outbox, queue and provider failures and tests concurrent decisions/jobs. It does not contact AtoZ or send WhatsApp messages. See `docs/registration-notifications-verification.md` for the actual execution results from this change.
+Run backend `npm run check`, `npm run build`, `npm test` and `npm run test:integration`. Tests use disposable PostgreSQL, real Prisma transactions/guards/DTOs, and mocked identity/queue/provider transports. They do not contact a WhatsApp provider. See the verification document for actual executed results; historical runs are not evidence that new changes passed.

@@ -48,7 +48,7 @@ describe('production registration rate limit', () => {
     expect(body.paths['/api/super-admin/accounts'].post.security).toEqual([{ bearer: [] }]);
     expect(body.paths['/api/super-admin/accounts'].get.responses['200'].content['application/json'].schema.properties.items.type).toBe('array');
     expect(body.components.schemas.CreateAdminDto.properties.password.writeOnly).toBe(true);
-    expect(body.components.schemas.CreateAdminDto.properties.role.enum).toEqual(['ADMIN']);
+    expect(body.components.schemas.CreateAdminDto.properties.role.enum).toEqual(['ADMIN', 'SUPER_ADMIN']);
     expect(body.paths['/api/admin/registrations/analytics'].get).toBeDefined();
     expect(body.paths['/api/admin/registrations/{id}/decision'].post).toBeDefined();
     expect(body.components.securitySchemes.bearer).toMatchObject({ type: 'http', scheme: 'bearer' });

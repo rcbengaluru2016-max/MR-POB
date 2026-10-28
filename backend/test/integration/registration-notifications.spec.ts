@@ -8,7 +8,8 @@ import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/bootstrap';
 import { PrismaService } from '../../src/database/prisma.service';
 import { AuthService } from '../../src/auth/auth.service';
-import { NotificationsService } from '../../src/notifications/notifications.service';
+import { NotificationsService, templateKey } from '../../src/notifications/notifications.service';
+import { RejectionRetentionService } from '../../src/registrations/rejection-retention.service';
 import { NotificationWorker } from '../../src/notifications/notification-worker.service';
 import { NotificationQueue } from '../../src/notifications/sqs.service';
 import { AtoZWhatsAppProvider, MockWhatsAppProvider, ProviderFailure, WhatsAppProvider } from '../../src/notifications/whatsapp.provider';
@@ -71,8 +72,9 @@ describe('PostgreSQL registration decisions and durable WhatsApp delivery (mock 
     const registration = await seed(kind);
     const user = kind === 'company' ? superAdmin : admin;
     const result = await request(app.getHttpServer()).post(path(registration.id)).set(header(user)).send({ action: 'approve' }).expect(201);
-    expect(result.body).toMatchObject({ status: 'APPROVED', activationPending: true });
-    expect(await prisma.registration.findUniqueOrThrow({ where: { id: registration.id } })).toMatchObject({ status: 'APPROVED', decidedById: user.id, decidedAt: expect.any(Date) });
+    expect(result.body).toMatchObject({ status: 'APPROVED', activationPending: false, accountStatus: 'active', masterCode: expect.stringMatching(/^ZI\d{4,}$/) });
+    const approved = await prisma.registration.findUniqueOrThrow({ where: { id: registration.id }, include: { owner: true } });
+    expect(approved).toMatchObject({ status: 'APPROVED', decidedById: user.id, decidedAt: expect.any(Date), masterCode: result.body.masterCode, owner: { state: 'ACTIVE' } });
     for (const reviewer of [admin, superAdmin]) {
       const list = await request(app.getHttpServer()).get(`/api/admin/registrations/approved?kind=${kind}&status=PENDING`).set(header(reviewer)).expect(200);
       expect(list.body.items.map((item: { id: string }) => item.id)).toEqual([registration.id]);
@@ -81,22 +83,23 @@ describe('PostgreSQL registration decisions and durable WhatsApp delivery (mock 
       expect(detail.body.record.decidedById).toBe(user.id);
     }
     const event = await prisma.registrationNotification.findFirstOrThrow();
-    expect(event).toMatchObject({ event: 'APPROVED', kind, recipient: '+919876543210', templateKey: `registration.${kind}.approved`, status: 'PENDING' });
+    const names = { customer: ['Customer', result.body.masterCode], company: ['Company Admin', 'Company', result.body.masterCode], patient: ['Patient', result.body.masterCode] };
+    expect(event).toMatchObject({ event: 'APPROVED', kind, recipient: '+919876543210', templateKey: templateKey(kind, 'APPROVED'), status: 'PENDING', payload: { variables: names[kind] } });
     await notifications.process(event.id);
     const saved = await prisma.registrationNotification.findUniqueOrThrow({ where: { id: event.id } });
-    expect(saved).toMatchObject({ status: 'MOCKED', templateId: `mock:registration.${kind}.approved`, attempts: 1 });
+    expect(saved).toMatchObject({ status: 'MOCKED', templateId: `mock:${templateKey(kind, 'APPROVED')}`, attempts: 1 });
     expect(await prisma.registration.count()).toBe(1);
-    expect(await prisma.erpUser.count()).toBe(3);
+    expect(await prisma.erpUser.count()).toBe(4);
     const counts = await Promise.all([prisma.customerRegistration.count(), prisma.companyRegistration.count(), prisma.patientRegistration.count()]);
     expect(counts.reduce((sum, count) => sum + count, 0)).toBe(1);
   });
 
   it('rejects with audit/reason, excludes rejected and pending records, and blocks rejection delivery by default', async () => {
     const registration = await seed(); await seed('patient', 'PENDING', '9876543211');
-    await request(app.getHttpServer()).post(path(registration.id)).set(header(superAdmin)).send({ action: 'reject', reason: 'Documents need correction' }).expect(201);
+    await request(app.getHttpServer()).post(path(registration.id)).set(header(superAdmin)).send({ action: 'reject', reasonCode: 'OTHER', reasonReviewed: true, reason: 'Documents need correction' }).expect(201);
     expect(await prisma.registration.findUniqueOrThrow({ where: { id: registration.id } })).toMatchObject({ status: 'REJECTED', rejectionReason: 'Documents need correction', decidedById: superAdmin.id, decidedAt: expect.any(Date) });
     const event = await prisma.registrationNotification.findFirstOrThrow();
-    expect(JSON.stringify(event.payload)).not.toContain('Documents need correction');
+    expect(JSON.stringify(event.payload)).toContain('Documents need correction');
     await notifications.process(event.id);
     expect(await prisma.registrationNotification.findUniqueOrThrow({ where: { id: event.id } })).toMatchObject({ status: 'BLOCKED', lastError: 'REJECTION_NOTIFICATIONS_DISABLED' });
     const list = await request(app.getHttpServer()).get('/api/admin/registrations/approved?kind=patient').set(header(admin)).expect(200);
@@ -119,12 +122,12 @@ describe('PostgreSQL registration decisions and durable WhatsApp delivery (mock 
     const registration = await seed();
     const results = await Promise.all([
       request(app.getHttpServer()).post(path(registration.id)).set(header(admin)).send({ action: 'approve' }),
-      request(app.getHttpServer()).post(path(registration.id)).set(header(superAdmin)).send({ action: 'reject', reason: 'Documents need correction' }),
+      request(app.getHttpServer()).post(path(registration.id)).set(header(superAdmin)).send({ action: 'reject', reasonCode: 'OTHER', reasonReviewed: true, reason: 'Documents need correction' }),
     ]);
     expect(results.map(result => result.status).sort()).toEqual([201, 409]);
-    await request(app.getHttpServer()).post(path(registration.id)).set(header(admin)).send({ action: 'approve' }).expect(409);
-    expect(await prisma.auditEvent.count()).toBe(1); expect(await prisma.registrationNotification.count()).toBe(1);
     const saved = await prisma.registration.findUniqueOrThrow({ where: { id: registration.id } });
+    await request(app.getHttpServer()).post(path(registration.id)).set(header(admin)).send({ action: 'approve' }).expect(saved.status === 'APPROVED' ? 201 : 409);
+    expect(await prisma.auditEvent.count()).toBe(1); expect(await prisma.registrationNotification.count()).toBe(1);
     expect((await prisma.registrationNotification.findFirstOrThrow()).event).toBe(saved.status);
   });
 
@@ -190,6 +193,7 @@ describe('PostgreSQL registration decisions and durable WhatsApp delivery (mock 
 
   it('stops after five safe failures, keeps approval intact and retries DLQ publication failures', async () => {
     const event = await approve();
+    const original = await prisma.registration.findUniqueOrThrow({ where: { id: event.registrationId } });
     jest.spyOn(app.get(WhatsAppProvider), 'send').mockRejectedValue(new ProviderFailure('retry', 'TEMPORARILY_UNAVAILABLE'));
     for (let i = 0; i < 5; i++) { await makeDue(event.id); await notifications.process(event.id); }
     expect(await prisma.registrationNotification.findUniqueOrThrow({ where: { id: event.id } })).toMatchObject({ status: 'FAILED', attempts: 5 });
@@ -198,7 +202,22 @@ describe('PostgreSQL registration decisions and durable WhatsApp delivery (mock 
     expect((await prisma.registrationNotification.findUniqueOrThrow({ where: { id: event.id } })).deadLetteredAt).toBeNull();
     await makeDue(event.id); await worker.dispatch();
     expect((await prisma.registrationNotification.findUniqueOrThrow({ where: { id: event.id } })).deadLetteredAt).toBeInstanceOf(Date);
-    expect((await prisma.registration.findUniqueOrThrow({ where: { id: event.registrationId } })).status).toBe('APPROVED');
+    expect(await prisma.registration.findUniqueOrThrow({ where: { id: event.registrationId } })).toMatchObject({ status: 'APPROVED', masterCode: original.masterCode, ownerId: original.ownerId });
+    expect(await prisma.registrationNotification.count({ where: { registrationId: event.registrationId } })).toBe(1);
+    expect(await prisma.erpUser.count()).toBe(4);
+  });
+
+  it('refreshes legacy pending payloads with saved approval variables without replaying completed notifications', async () => {
+    const event = await approve();
+    const approved = await prisma.registration.findUniqueOrThrow({ where: { id: event.registrationId } });
+    await prisma.registrationNotification.update({ where: { id: event.id }, data: { templateKey: 'registration.patient.approved', payload: { registrationId: event.registrationId, decision: 'APPROVED' } } });
+    const send = jest.spyOn(app.get(WhatsAppProvider), 'send');
+    await notifications.process(event.id);
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ template: 'mock:patient_registration_approved', payload: expect.objectContaining({ variables: ['Patient', approved.masterCode] }) }), expect.any(AbortSignal));
+    await notifications.process(event.id);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(await prisma.registrationNotification.findUniqueOrThrow({ where: { id: event.id } })).toMatchObject({ status: 'MOCKED', templateKey: 'patient_registration_approved', attempts: 1 });
+    expect(await prisma.registration.findUniqueOrThrow({ where: { id: event.registrationId } })).toMatchObject({ masterCode: approved.masterCode, ownerId: approved.ownerId });
   });
 
   it('blocks live configuration with missing approvals/templates and never invokes the mock as a live fallback', async () => {
@@ -244,15 +263,77 @@ describe('PostgreSQL registration decisions and durable WhatsApp delivery (mock 
     await notifications.process(event.id); expect(send).toHaveBeenCalledTimes(1);
   });
 
-  it('can simulate rejection notifications without disclosing the rejection reason', async () => {
+  it('simulates the reviewed external rejection reason with the shared template', async () => {
     process.env.WHATSAPP_REJECTIONS_ENABLED = 'true';
     const registration = await seed('company');
-    await request(app.getHttpServer()).post(path(registration.id)).set(header(admin)).send({ action: 'reject', reason: 'Private review explanation' }).expect(201);
+    await request(app.getHttpServer()).post(path(registration.id)).set(header(admin)).send({ action: 'reject', reasonCode: 'OTHER', reasonReviewed: true, reason: 'Please upload a clearer company logo' }).expect(201);
     const event = await prisma.registrationNotification.findFirstOrThrow();
     const send = jest.spyOn(app.get(WhatsAppProvider), 'send');
     await notifications.process(event.id);
-    expect(send.mock.calls[0][0]).toMatchObject({ recipient: '+919876543210', template: 'mock:registration.company.rejected', payload: { decision: 'REJECTED' } });
-    expect(JSON.stringify(send.mock.calls)).not.toContain('Private review explanation');
+    expect(send.mock.calls[0][0]).toMatchObject({ recipient: '+919876543210', template: 'mock:registration_rejected', payload: { decision: 'REJECTED' } });
+    expect(JSON.stringify(send.mock.calls)).toContain('Please upload a clearer company logo');
+  });
+
+  it.each(['customer', 'patient', 'company'] as const)('rejects %s exactly once with reviewed template variables and expires only rejection details', async kind => {
+    process.env.WHATSAPP_REJECTIONS_ENABLED = 'true';
+    const registration = await seed(kind);
+    const body = { action: 'reject', reasonCode: 'UNVERIFIABLE_INFORMATION' };
+    const responses = await Promise.all([admin, superAdmin].map(user => request(app.getHttpServer()).post(path(registration.id)).set(header(user)).send(body)));
+    expect(responses.map(response => response.status)).toEqual([201, 201]);
+    let saved = await prisma.registration.findUniqueOrThrow({ where: { id: registration.id } });
+    const expiry = saved.rejectionExpiresAt!;
+    expect(expiry.getTime() - saved.decidedAt!.getTime()).toBe(30 * 86400000);
+    expect(saved).toMatchObject({ status: 'REJECTED', rejectionReasonCode: body.reasonCode, rejectionReason: 'Submitted information could not be verified.', decidedById: expect.any(String) });
+    expect(await prisma.registrationNotification.count()).toBe(1);
+    expect(await prisma.auditEvent.count({ where: { action: 'REGISTRATION_REJECTED' } })).toBe(1);
+    const event = await prisma.registrationNotification.findFirstOrThrow();
+    const names = { customer: 'Customer', patient: 'Patient', company: 'Company Admin' };
+    expect(event.payload).toMatchObject({ variables: [names[kind], names[kind], saved.rejectionReason] });
+    expect(event.templateKey).toBe('registration_rejected');
+    await notifications.process(event.id);
+    await notifications.process(event.id);
+    expect(await prisma.registrationNotification.findUniqueOrThrow({ where: { id: event.id } })).toMatchObject({ status: 'MOCKED', attempts: 1 });
+    const retention = app.get(RejectionRetentionService);
+    expect(await retention.cleanup(new Date(expiry.getTime() - 1))).toBe(0);
+    // Unrelated newer rejection and document references must survive cleanup.
+    const newer = await seed('patient', 'REJECTED', '9876543218');
+    await prisma.registration.update({ where: { id: newer.id }, data: { rejectionReason: 'Newer reason', rejectionExpiresAt: new Date(expiry.getTime() + 1000) } });
+    await prisma.document.create({ data: { registrationId: registration.id, slot: 'proof', originalName: 'proof.pdf', objectKey: `test/${kind}/proof`, contentType: 'application/pdf', size: 1, sha256: 'a'.repeat(64) } });
+    const users = await prisma.erpUser.count();
+    expect(await retention.cleanup(expiry)).toBe(1);
+    expect(await retention.cleanup(expiry)).toBe(0);
+    saved = await prisma.registration.findUniqueOrThrow({ where: { id: registration.id } });
+    expect(saved).toMatchObject({ status: 'REJECTED', rejectionReason: null, rejectionReasonCode: null, rejectionExpiresAt: null, decidedById: expect.any(String), decidedAt: expect.any(Date) });
+    expect(await prisma.document.count()).toBe(1);
+    expect(await prisma.erpUser.count()).toBe(users);
+    expect(await prisma.registration.count()).toBe(2);
+    expect(await prisma.registration.findUniqueOrThrow({ where: { id: newer.id } })).toMatchObject({ rejectionReason: 'Newer reason' });
+    expect(await prisma.registrationNotification.findUniqueOrThrow({ where: { id: event.id } })).toMatchObject({ status: 'EXPIRED', payload: {}, recipient: '', providerMessageId: null });
+    expect(JSON.stringify(await prisma.auditEvent.findMany())).not.toContain('could not be verified');
+  });
+
+  it.each([
+    {}, { reasonCode: 'unknown' }, { reasonCode: 'OTHER', reason: 'Please upload a clearer copy' },
+    { reasonCode: 'OTHER', reasonReviewed: true, reason: 'x'.repeat(501) },
+    { reasonCode: 'OTHER', reasonReviewed: true, reason: 'Please use password Secret123' },
+    { reasonCode: 'OTHER', reasonReviewed: true, reason: 'Document number 123456789012 is invalid' },
+    { reasonCode: 'MISSING_DOCUMENTS' },
+  ])('rejects invalid or sensitive reasons before persisting: %j', async reason => {
+    const registration = await seed();
+    await request(app.getHttpServer()).post(path(registration.id)).set(header(admin)).send({ action: 'reject', ...reason }).expect(400);
+    expect(await prisma.registration.findUniqueOrThrow({ where: { id: registration.id } })).toMatchObject({ status: 'PENDING', rejectionReason: null });
+    expect(await prisma.registrationNotification.count()).toBe(0);
+  });
+
+  it('normalizes reviewed custom text and does not undo rejection on provider failure', async () => {
+    process.env.WHATSAPP_REJECTIONS_ENABLED = 'true';
+    const registration = await seed();
+    await request(app.getHttpServer()).post(path(registration.id)).set(header(admin)).send({ action: 'reject', reasonCode: 'OTHER', reasonReviewed: true, reason: '  Please   correct the address.  ' }).expect(201);
+    const event = await prisma.registrationNotification.findFirstOrThrow();
+    jest.spyOn(app.get(WhatsAppProvider), 'send').mockRejectedValue(new ProviderFailure('failed', 'MOCK_REJECTED'));
+    await notifications.process(event.id);
+    expect(await prisma.registrationNotification.findUniqueOrThrow({ where: { id: event.id } })).toMatchObject({ status: 'FAILED' });
+    expect(await prisma.registration.findUniqueOrThrow({ where: { id: registration.id } })).toMatchObject({ status: 'REJECTED', rejectionReason: 'Please correct the address.' });
   });
 
   it('deduplicates delivery after SQS delete fails following successful processing', async () => {

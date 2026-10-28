@@ -1,5 +1,7 @@
 # Registration and notification verification
 
+Historical verification from 23 October 2026. For the current sequential registration, Master Code and notification implementation, see [the 26 October implementation and verification report](sequential-registration-implementation.md).
+
 Executed on 23 October 2026. All changes are inside `backend/`; frontend files were inspected without edits.
 
 | Final check | Actual result |

@@ -136,6 +136,7 @@ describe('RegistrationsService persistence and reliability', () => {
     prisma = {
       registration: { findUnique: jest.fn().mockResolvedValue(null), findFirst: jest.fn().mockResolvedValue(null), groupBy: jest.fn(), findMany: jest.fn(), count: jest.fn() },
       customerRegistration: { findUnique: jest.fn().mockResolvedValue(null) },
+      $queryRaw: jest.fn().mockResolvedValue([{ serial: 1n }]),
       $transaction: jest.fn().mockImplementation((callback: any) => typeof callback === 'function' ? callback(tx) : Promise.all(callback)),
     };
     documents = {
@@ -167,6 +168,23 @@ describe('RegistrationsService persistence and reliability', () => {
     expect(data.email).toBe('owner@example.test');
     expect(data.customer.create.gstNumber).toBe('GST-EXAMPLE');
     expect(data.customer.create.address.create.pinCode).toBe('560001');
+  });
+
+  it.each<[RegistrationKind, RegistrationInput, string]>([
+    ['customer', customerInput(), 'REG-CUS-ZI0001'],
+    ['company', companyInput(), 'REG-COM-ZI0001'],
+    ['patient', patientInput(), 'REG-PAT-ZI0001'],
+  ])('allocates the database serial with the correct %s registration prefix', async (kind, input, expected) => {
+    const result = await service.submit(kind, input, []);
+    expect(result.registrationId).toBe(expected);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.registration.create.mock.calls[0][0].data.id).toBe(expected);
+    expect(documents.stageUploads).toHaveBeenCalledWith(kind, expected, expect.any(Array));
+  });
+
+  it('does not truncate registration serials after 9999', async () => {
+    prisma.$queryRaw.mockResolvedValue([{ serial: 10000n }]);
+    expect((await service.submit('patient', patientInput(), [])).registrationId).toBe('REG-PAT-ZI10000');
   });
 
   it('stores only document metadata returned by the storage layer', async () => {
@@ -247,7 +265,7 @@ describe('RegistrationsService persistence and reliability', () => {
   });
 
   it('scopes paginated lists by type/status and returns dashboard columns', async () => {
-    prisma.registration.findMany.mockResolvedValue([{ id: 'REG-COM-1', kind: 'company', status: 'PENDING', submittedAt, mobile: '9876543211', company: { companyName: 'Example Pharma' } }]);
+    prisma.registration.findMany.mockResolvedValue([{ id: 'REG-COM-1', kind: 'company', status: 'PENDING', submittedAt, mobile: '9876543211', company: { companyName: 'Example Pharma' }, notifications: [] }]);
     prisma.registration.count.mockResolvedValue(30);
     const response = await service.list({ kind: 'company', status: 'PENDING', page: 2, pageSize: 25 });
     expect(response.total).toBe(30);
@@ -256,10 +274,10 @@ describe('RegistrationsService persistence and reliability', () => {
   });
 
   it('returns typed details and safe file metadata without internal security fields', async () => {
-    prisma.registration.findUnique.mockResolvedValue({ id: 'REG-PAT-1', kind: 'patient', status: 'PENDING', submittedAt, mobile: '9876543212', email: 'patient@example.test', requestHash: 'secret-hash', idempotencyKey: 'secret-key', ownerId: 'owner', patient: { registrationId: 'REG-PAT-1', patientName: 'Patient Example', address: 'Example address', paymentMethod: 'UPI' }, documents: [{ id: 'doc', slot: 'idProof', originalName: 'proof.pdf', contentType: 'application/pdf', size: 100, objectKey: 'private-key', sha256: 'sha' }] });
+    prisma.registration.findUnique.mockResolvedValue({ id: 'REG-PAT-1', kind: 'patient', status: 'PENDING', submittedAt, mobile: '9876543212', email: 'patient@example.test', requestHash: 'secret-hash', idempotencyKey: 'secret-key', passwordHash: 'secret-password-hash', ownerId: 'owner', notifications: [], patient: { registrationId: 'REG-PAT-1', patientName: 'Patient Example', address: 'Example address', paymentMethod: 'UPI' }, documents: [{ id: 'doc', slot: 'idProof', originalName: 'proof.pdf', contentType: 'application/pdf', size: 100, objectKey: 'private-key', sha256: 'sha' }] });
     const result = await service.detail('REG-PAT-1');
     expect(result.record).toMatchObject({ patientName: 'Patient Example', readOnly: false, files: { idProof: { id: 'doc', name: 'proof.pdf', accessPath: '/api/documents/doc' } } });
-    expect(JSON.stringify(result)).not.toMatch(/secret-hash|secret-key|private-key|ownerId/);
+    expect(JSON.stringify(result)).not.toMatch(/secret-hash|secret-key|private-key|ownerId|secret-password-hash/);
   });
 
   it('returns 404 for an absent registration', async () => { await expect(service.detail('missing')).rejects.toThrow('Registration not found'); });

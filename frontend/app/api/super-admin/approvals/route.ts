@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getStore } from "@/lib/server/store";
+import { refreshStore } from "@/lib/server/store";
 import { isAdminSession } from "@/lib/server/super-admin";
 
 export async function GET() {
@@ -7,9 +7,11 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const store = await getStore();
+  const store = await refreshStore();
   const items = store.registrations.map((record) => ({
     id: record.id,
+    masterCode: store.masters.find((item) => item.registrationId === record.id)?.code ?? null,
+    notificationStatus: store.registrationNotifications?.find((item) => item.registrationId === record.id)?.status ?? null,
     kind: record.kind,
     status: record.status,
     submittedAt: record.submittedAt,

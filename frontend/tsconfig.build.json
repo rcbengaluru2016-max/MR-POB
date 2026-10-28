@@ -7,5 +7,5 @@
     "**/*.mts",
     ".next/types/**/*.ts"
   ],
-  "exclude": ["node_modules", ".next/dev/**", ".backend-http-e2e-*/**"]
+  "exclude": ["node_modules", ".next/dev/**", ".backend-http-e2e-*/**", ".imports-production-check-*/**"]
 }

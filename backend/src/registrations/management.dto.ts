@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateIf } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AnalyticsQueryDto {
@@ -12,8 +12,12 @@ export class AnalyticsQueryDto {
 
 export class RegistrationDecisionDto {
   @ApiProperty({ enum: ['approve', 'reject'] }) @IsIn(['approve', 'reject']) action!: 'approve' | 'reject';
-  @ApiPropertyOptional({ minLength: 8, maxLength: 2000, description: 'Required for rejection.' })
-  @ValidateIf(input => input.action === 'reject' || input.reason !== undefined)
+  @ApiPropertyOptional({ description: 'Structured rejection code; required for reject.' })
+  @IsOptional() @IsString() @MaxLength(50) reasonCode?: string;
+  @ApiPropertyOptional({ description: 'Administrator reviewed custom reason for external communication.' })
+  @IsOptional() @IsBoolean() reasonReviewed?: boolean;
+  @ApiPropertyOptional({ minLength: 8, maxLength: 500, description: 'Custom externally reviewed reason; required for OTHER.' })
+  @ValidateIf(input => input.reason !== undefined)
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @IsString() @MinLength(8) @MaxLength(2000) reason?: string;
 }

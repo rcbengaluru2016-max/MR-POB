@@ -9,9 +9,10 @@ import { RegistrationsModule } from './registrations/registrations.module';
 import { HealthModule } from './health/health.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { ImportsModule } from './imports/imports.module';
 
 @Module({
-  imports: [ConfigModule, DatabaseModule, ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 120 }]), AuthModule, AccountsModule, DocumentsModule, RegistrationsModule, NotificationsModule, HealthModule],
+  imports: [ConfigModule, DatabaseModule, ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 120 }]), AuthModule, AccountsModule, DocumentsModule, RegistrationsModule, NotificationsModule, HealthModule, ImportsModule],
   providers: [ThrottlerGuard, { provide: APP_GUARD, useExisting: ThrottlerGuard }],
 })
 export class AppModule {}

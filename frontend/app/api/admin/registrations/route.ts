@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/server/session";
-import { getStore } from "@/lib/server/store";
+import { refreshStore } from "@/lib/server/store";
 import { isAdminSession } from "@/lib/server/super-admin";
 
 export async function GET(request: Request) {
@@ -11,12 +11,13 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const kind = searchParams.get("kind");
   const status = searchParams.get("status");
-  const store = await getStore();
+  const store = await refreshStore();
   const items = store.registrations
     .filter((item) => (kind ? item.kind === kind : true))
     .filter((item) => (status ? item.status === status : true))
     .map((item) => ({
       id: item.id,
+      masterCode: store.masters.find((master) => master.registrationId === item.id)?.code ?? null,
       kind: item.kind,
       status: item.status,
       submittedAt: item.submittedAt,

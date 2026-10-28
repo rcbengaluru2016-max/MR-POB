@@ -40,6 +40,10 @@ describe('Super Admin account HTTP policy and validation', () => {
     expect(accounts.create).not.toHaveBeenCalled();
     expect(accounts.setState).not.toHaveBeenCalled();
   });
+  it.each(['Short1!', 'lowercase123!@#', 'UPPERCASE123!@#', 'LettersOnly!!!', 'NoSymbolPass123', 'Has Space123!'])('rejects an initial password that violates account policy: %s', async password => {
+    await request(app.getHttpServer()).post('/api/super-admin/accounts').set('Authorization', 'Bearer super').send({ name: 'Valid Admin', email: 'valid@example.test', role: 'ADMIN', state: 'ACTIVE', password }).expect(400);
+    expect(accounts.create).not.toHaveBeenCalled();
+  });
 });
 
 describe('dashboard UTC date ranges', () => {

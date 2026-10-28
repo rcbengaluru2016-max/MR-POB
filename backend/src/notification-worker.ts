@@ -4,9 +4,10 @@ import { ConsoleLogger, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ConfigModule, ConfigService } from './config/config.service';
 import { DatabaseModule } from './database/prisma.service';
+import { RejectionRetentionService } from './registrations/rejection-retention.service';
 import { NotificationsModule } from './notifications/notifications.module';
 
-@Module({ imports: [ConfigModule, DatabaseModule, NotificationsModule] })
+@Module({ imports: [ConfigModule, DatabaseModule, NotificationsModule], providers: [RejectionRetentionService] })
 class NotificationWorkerModule {}
 
 async function bootstrap() {

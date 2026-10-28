@@ -43,16 +43,62 @@ model ErpUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   createdById String? @db.Uuid
+  lastLoginAt DateTime?
+  deletedAt DateTime?
+  tokensValidAfter DateTime?
+  mfaEnrollmentRequired Boolean @default(false)
   createdBy ErpUser? @relation("CreatedAccounts", fields: [createdById], references: [id], onDelete: Restrict)
   createdAccounts ErpUser[] @relation("CreatedAccounts")
   ownedRegistrations Registration[] @relation("Owner")
   decisions Registration[] @relation("Decision")
   audits AuditEvent[]
+  resetTokens AccountResetToken[]
+  imports ImportJob[]
   @@index([role, createdAt, id])
+  @@index([role, state, deletedAt, createdAt, id])
+}
+
+model AccountResetToken {
+  id String @id @default(uuid()) @db.Uuid
+  accountId String @db.Uuid
+  tokenHash String @unique @db.VarChar(64)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  createdById String @db.Uuid
+  usedAt DateTime?
+  invalidatedAt DateTime?
+  // A claimed token is never automatically released after an uncertain remote write.
+  claimedAt DateTime?
+  previousState UserState
+  account ErpUser @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  @@index([accountId, expiresAt])
+}
+
+model AccountStepUp {
+  id String @id @default(uuid()) @db.Uuid
+  actorId String @db.Uuid
+  binding String @db.VarChar(64)
+  encryptedSession String
+  username String
+  challengeName String
+  expiresAt DateTime
+  verifiedAt DateTime?
+  consumedAt DateTime?
+  proofHash String? @unique @db.VarChar(64)
+  attempts Int @default(0)
+  createdAt DateTime @default(now())
+  @@index([actorId, createdAt])
 }
 
 model Registration {
   id String @id
+  registrationSource String @default("Normal Registration") @db.VarChar(30)
+  importedById String? @db.Uuid
+  importedAt DateTime?
+  importJobId String? @db.Uuid
+  masterCode String? @unique
+  // One-way credential verifier, never returned by registration APIs.
+  passwordHash String?
   kind RegistrationKind
   status RegistrationStatus @default(PENDING)
   mobile String @db.VarChar(10)
@@ -64,6 +110,8 @@ model Registration {
   decidedAt DateTime?
   decidedById String? @db.Uuid
   rejectionReason String?
+  rejectionReasonCode String? @db.VarChar(50)
+  rejectionExpiresAt DateTime?
   ownerId String? @db.Uuid
   idempotencyKey String? @unique
   requestHash String
@@ -75,9 +123,11 @@ model Registration {
   documents Document[]
   audits AuditEvent[]
   notifications RegistrationNotification[]
+  @@index([importJobId])
   @@unique([kind, mobile])
   @@unique([kind, email])
   @@index([kind, status, submittedAt, id])
+  @@index([rejectionExpiresAt])
 }
 
 model CustomerRegistration {
@@ -151,6 +201,61 @@ model AuditEvent {
   @@index([registrationId, createdAt])
 }
 
+enum ImportStatus {
+  PENDING_VALIDATION
+  VALIDATING
+  VALIDATION_FAILED
+  READY
+  IMPORTING
+  COMPLETED
+  FAILED
+  PARTIALLY_COMPLETED
+  CANCELLED
+}
+
+model ImportJob {
+  id String @id @default(uuid()) @db.Uuid
+  kind RegistrationKind
+  importType String @db.VarChar(10)
+  fileName String @db.VarChar(200)
+  supportingFileName String? @db.VarChar(200)
+  warnings String[] @default([])
+  uploadedById String @db.Uuid
+  uploadedBy ErpUser @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  uploadedAt DateTime @default(now())
+  status ImportStatus @default(PENDING_VALIDATION)
+  requestHash String @db.VarChar(64)
+  idempotencyKey String? @unique @db.VarChar(128)
+  totalRecords Int @default(0)
+  validRecords Int @default(0)
+  importedRecords Int @default(0)
+  progress Int @default(0)
+  errorSummary String?
+  expiresAt DateTime
+  confirmedAt DateTime?
+  completedAt DateTime?
+  deletedAt DateTime?
+  records ImportRecord[]
+  @@index([deletedAt, uploadedAt, id])
+  @@index([status, expiresAt])
+}
+
+model ImportRecord {
+  id String @id @default(uuid()) @db.Uuid
+  jobId String @db.Uuid
+  job ImportJob @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  rowNumber Int
+  registrationId String?
+  masterCode String?
+  data Json
+  errors String[]
+  duplicate Boolean @default(false)
+  batchId String? @db.Uuid
+  credentialHash String?
+  documents Json
+  @@unique([jobId, rowNumber])
+}
+
 model UploadBatch {
   id String @id @default(uuid()) @db.Uuid
   registrationId String @unique
@@ -180,6 +285,7 @@ enum NotificationStatus {
   BLOCKED
   UNKNOWN
   FAILED
+  EXPIRED
 }
 
 // This row is both the transactional outbox and the durable delivery ledger.

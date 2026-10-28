@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 
-type User = { username: string; displayName: string; userType: string };
+type User = { username: string; masterCode?: string; displayName: string; userType: string };
 
 export default function PortalPage() {
   const router = useRouter();
@@ -42,9 +42,9 @@ export default function PortalPage() {
     <div className="mx-auto max-w-xl p-8">
       <h1 className="text-2xl font-semibold text-foreground">Account activated</h1>
       <p className="mt-3 text-muted">
-        Welcome {user.displayName}. Your username is your Master Code.
+        Welcome {user.displayName}. Your Master Code is shown below.
       </p>
-      <p className="mt-2 font-mono text-lg">{user.username}</p>
+      <p className="mt-2 font-mono text-lg">{user.masterCode ?? user.username}</p>
       <p className="mt-4 text-sm text-muted">
         Role: {user.userType}. Operational dashboards for ordering and visits can be added here
         after this onboarding module.

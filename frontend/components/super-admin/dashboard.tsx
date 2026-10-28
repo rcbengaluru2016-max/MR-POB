@@ -45,40 +45,41 @@ export function SuperAdminDashboard({ basePath = "/super-admin" }: { basePath?: 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [view, setView] = useState<"bar" | "pie">("bar");
-  const [data, setData] = useState<Summary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [result, setResult] = useState<{ key: string; data: Summary | null; error: string } | null>(null);
   const incompleteCustomRange = period === "custom" && (!startDate || !endDate);
+  const query = new URLSearchParams({ period });
+  if (period === "custom") {
+    query.set("start", startDate);
+    query.set("end", endDate);
+  }
+  const queryString = query.toString();
+  const requestKey = `${queryString}:${attempt}`;
+  const data = result?.key === requestKey ? result.data : null;
+  const error = result?.key === requestKey ? result.error : "";
+  const loading = !incompleteCustomRange && result?.key !== requestKey;
 
   useEffect(() => {
     const controller = new AbortController();
-    if (period === "custom" && (!startDate || !endDate)) {
+    if (incompleteCustomRange) {
       return () => controller.abort();
     }
 
-    const query = new URLSearchParams({ period });
-    if (period === "custom") {
-      query.set("start", startDate);
-      query.set("end", endDate);
-    }
-    fetch(`/api/super-admin/analytics?${query}`, { signal: controller.signal })
+    fetch(`/api/super-admin/analytics?${queryString}`, { signal: controller.signal })
       .then(async (response) => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.error ?? "Unable to load analytics.");
         return result as Summary;
       })
-      .then((result) => {
-        if (!controller.signal.aborted) setData(result);
+      .then((data) => {
+        if (!controller.signal.aborted) setResult({ key: requestKey, data, error: "" });
       })
       .catch((reason: unknown) => {
         if (controller.signal.aborted || (reason instanceof DOMException && reason.name === "AbortError")) return;
-        setError(reason instanceof Error ? reason.message : "Unable to load analytics.");
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        setResult({ key: requestKey, data: null, error: reason instanceof Error ? reason.message : "Unable to load analytics." });
       });
     return () => controller.abort();
-  }, [period, startDate, endDate]);
+  }, [queryString, requestKey, incompleteCustomRange]);
 
   const chartTotal = useMemo(
     () => data ? Object.values(data.categoryShare).reduce((sum, value) => sum + value, 0) : 0,
@@ -114,7 +115,7 @@ export function SuperAdminDashboard({ basePath = "/super-admin" }: { basePath?: 
         </div>
       </header>
 
-      {incompleteCustomRange ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800" role="status">Choose a start and end date to view custom analytics.</p> : error ? <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-danger" role="alert">{error}</p> : null}
+      {incompleteCustomRange ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800" role="status">Choose a start and end date to view custom analytics.</p> : error ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-danger" role="alert"><p>{error}</p><button type="button" onClick={() => setAttempt((value) => value + 1)} className="rounded-lg border border-red-300 px-3 py-1.5 font-semibold hover:bg-red-100">Retry</button></div> : null}
       {loading ? <p className="text-sm text-muted" role="status">Loading registration analytics…</p> : null}
 
       {data && !loading && !error && !incompleteCustomRange ? (

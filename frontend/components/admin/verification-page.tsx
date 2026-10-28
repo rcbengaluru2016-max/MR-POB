@@ -9,6 +9,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { TextArea } from "@/components/ui/field";
 import { cn, formatDateTime } from "@/lib/utils";
 import type { UploadedFile } from "@/lib/types";
+import { rejectionReasons, validateRejection } from "@/lib/rejection-reasons";
+import { notificationLabel, notificationWasSent } from "@/lib/notification-status";
 
 type Kind = "customer" | "company" | "patient";
 type RecordShape = {
@@ -57,12 +59,16 @@ function detailEntries(record: RecordShape): [string, string][] {
     companyName: "Company Name", headquarter: "Headquarter", division: "Division", gender: "Gender",
   };
   return keys[record.kind]
-    .filter((key) => record[key] !== undefined && record[key] !== "" && !(key === "address" && record.addressLine1))
+    .filter((key) => record[key] !== undefined && record[key] !== null && record[key] !== "" && !(key === "address" && record.addressLine1))
     .map((key) => [labels[key] ?? key, String(record[key])]);
 }
 
 function currentWorkflowStep(record: RecordShape) {
-  if (record.status === "approved") return record.activationPending ? 2 : 5;
+  if (record.status === "approved") {
+    if (!record.masterCode) return 3;
+    if (record.accountStatus !== "active" && record.accountStatus !== "unlocked") return 4;
+    return notificationWasSent(record.notificationStatus) ? 6 : 5;
+  }
   if (record.status === "rejected") return 1;
   return 1;
 }
@@ -83,8 +89,8 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reason, setReason] = useState("");
-  const [masterCode, setMasterCode] = useState("");
-  const [activationPending, setActivationPending] = useState(false);
+  const [reasonCode, setReasonCode] = useState("");
+  const [reasonReviewed, setReasonReviewed] = useState(false);
   const [decisionNotice, setDecisionNotice] = useState("");
 
   useEffect(() => {
@@ -96,7 +102,7 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
         if (expectedKind && data.record.kind !== expectedKind) throw new Error("Registration not found.");
         return data as { record: RecordShape };
       })
-      .then((data) => { setRecord(data.record); setActivationPending(data.record.activationPending === true); })
+      .then((data) => { setRecord(data.record); })
       .catch((item: unknown) => {
         if (item instanceof DOMException && item.name === "AbortError") return;
         setError(item instanceof Error ? item.message : "Unable to load registration.");
@@ -105,28 +111,36 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
   }, [params.id, expectedKind]);
 
   async function decide(action: "approve" | "reject") {
+    if (isDeciding) return;
     setError("");
+    if (action === "reject") {
+      try { validateRejection({ reasonCode, reason, reasonReviewed }, record?.kind); }
+      catch (error) { setError((error as Error).message); return; }
+    }
     setIsDeciding(true);
     try {
       const response = await fetch(`/api/admin/registrations/${params.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, reason }),
+        body: JSON.stringify(action === "approve" ? { action } : { action, reasonCode, ...(reasonCode === "OTHER" ? { reason, reasonReviewed } : {}) }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Action failed");
-      if (action === "approve" && superAdminFlow && typeof data.masterCode === "string") setMasterCode(data.masterCode);
-      setActivationPending(data.activationPending === true);
-      setDecisionNotice(action === "approve" ? "Registration approved. Account activation remains pending." : "Registration rejected.");
+      setDecisionNotice(action === "approve" ? `Registration approved. Master Code: ${data.masterCode}. ${notificationLabel(data.notificationStatus)}.` : `Registration rejected. ${notificationLabel(data.notificationStatus)}.`);
       setRecord((current) => current ? {
         ...current,
         status: action === "approve" ? "approved" : "rejected",
-        decidedAt: new Date().toISOString(),
-        rejectionReason: action === "reject" ? reason : current.rejectionReason,
+        decidedAt: data.decidedAt ?? new Date().toISOString(),
+        masterCode: data.masterCode ?? current.masterCode,
+        accountStatus: data.accountStatus ?? (action === "approve" && !data.activationPending ? "active" : current.accountStatus),
+        notificationStatus: data.notificationStatus ?? current.notificationStatus,
+        rejectionReason: action === "reject" ? data.rejectionReason : current.rejectionReason,
       } : current);
       setApproveOpen(false);
       setRejectOpen(false);
       setReason("");
+      setReasonCode("");
+      setReasonReviewed(false);
     } catch (item) {
       setError(item instanceof Error ? item.message : "Action failed");
     } finally {
@@ -137,25 +151,11 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
   if (error && !record) return <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-danger" role="alert">{error}</p>;
   if (!record) return <p className="text-sm text-muted">Loading registration details…</p>;
 
-  if (masterCode && superAdminFlow) {
-    const masterName = record.kind === "company" ? "Company" : record.kind[0].toUpperCase() + record.kind.slice(1);
-    return (
-      <section className="flex min-h-[55vh] flex-col items-center justify-center rounded-2xl border border-line bg-white px-5 py-12 text-center shadow-sm">
-        <span aria-hidden="true" className="text-4xl font-semibold text-emerald-700">✓</span>
-        <h1 className="mt-3 text-2xl font-semibold text-foreground">{masterName} Master Created Successfully</h1>
-        <p className="mt-2 text-sm text-muted">{masterName} Code</p>
-        <p className="mt-4 font-mono text-3xl font-semibold text-foreground">{masterCode}</p>
-        <span className="mt-4 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold tracking-wide text-emerald-700">AUTO-GENERATED</span>
-        <p className="mt-4 text-sm text-muted">Login account created and activated successfully.</p>
-      </section>
-    );
-  }
-
   const files = record.files ?? {};
   const entries = detailEntries(record);
   const completedThrough = currentWorkflowStep(record);
   const rejectedAtReview = record.status === "rejected";
-  const kindLabel = record.kind === "company" ? "Company" : record.kind[0].toUpperCase() + record.kind.slice(1);
+  const kindLabel = record.kind === "company" ? "Company Admin" : record.kind[0].toUpperCase() + record.kind.slice(1);
 
   return (
     <div className="space-y-4 sm:space-y-5">
@@ -167,12 +167,13 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
             <span className="rounded-full bg-panel px-3 py-1 text-xs font-semibold text-brand">{kindLabel}</span>
           </div>
           <p className="mt-1 text-sm text-muted">{record.id} <span className="px-1">·</span> Submitted {formatDateTime(record.submittedAt)}</p>
+          {typeof record.masterCode === "string" ? <p className="mt-2 text-sm font-semibold">Master Code: <span className="font-mono">{record.masterCode}</span></p> : null}
         </div>
         <StatusBadge value={record.status} />
       </header>
 
       <section aria-label="Registration progress" className="overflow-x-auto rounded-2xl border border-line bg-white p-4 shadow-sm sm:p-5">
-        <ol className="grid min-w-[760px] grid-cols-8">
+        <ol className="grid min-w-[760px] grid-cols-6">
           {workflowSteps.map((step, index) => {
             const complete = index < completedThrough;
             const active = index === completedThrough && !rejectedAtReview;
@@ -183,7 +184,7 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
                 <span className={cn("relative z-10 inline-flex size-[30px] items-center justify-center rounded-full border-2 bg-white text-xs font-semibold", complete && "border-emerald-700 bg-emerald-700 text-white", active && "border-brand text-brand", rejected && "border-red-600 bg-red-50 text-red-700", !complete && !active && !rejected && "border-slate-200 text-muted")}>
                   {complete ? "✓" : rejected ? "×" : index + 1}
                 </span>
-                <span className={cn("mt-2 max-w-28 text-[11px] leading-4 sm:text-xs", complete || active ? "font-medium text-foreground" : rejected ? "font-medium text-red-700" : "text-muted")}>{rejected ? "Rejected" : step}</span>
+                <span className={cn("mt-2 max-w-28 text-[11px] leading-4 sm:text-xs", complete || active ? "font-medium text-foreground" : rejected ? "font-medium text-red-700" : "text-muted")}>{rejected ? "Rejected" : index === 5 ? notificationLabel(record.notificationStatus) : step}</span>
                 {index === 0 ? <span className="mt-1 text-[10px] text-muted">{formatDateTime(record.submittedAt)}</span> : null}
                 {index === 2 && complete && record.decidedAt ? <span className="mt-1 text-[10px] text-muted">{formatDateTime(record.decidedAt)}</span> : null}
               </li>
@@ -202,7 +203,7 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
             </div>
           ))}
         </dl>
-        {record.status === "rejected" && record.rejectionReason ? <div className="mt-5 rounded-xl border border-red-100 bg-red-50 p-4"><h3 className="text-sm font-semibold text-red-800">Rejection reason</h3><p className="mt-1 whitespace-pre-wrap text-sm text-red-700">{record.rejectionReason}</p></div> : null}
+        {record.status === "rejected" && record.rejectionReason ? <div className="mt-5 rounded-xl border border-red-100 bg-red-50 p-4"><h3 className="text-sm font-semibold text-red-800">Rejection reason</h3><p className="mt-1 whitespace-pre-wrap text-sm text-red-700">{record.rejectionReason}</p><p className="mt-2 text-xs text-muted">Rejected {formatDateTime(record.decidedAt ?? "")}. Reason retained for 30 days.</p></div> : null}
       </section>
 
       <section className="rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-6">
@@ -239,7 +240,7 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
       <ConfirmDialog
         open={approveOpen}
         title="Approve registration"
-        description={activationPending ? "Record this registration as approved. Account activation and master creation remain pending." : "This will create the respective Master, generate a Master Code username, and activate the account. WhatsApp notifications are not sent because delivery is not configured."}
+        description="This will create the respective Master, generate a Master Code username, activate the account, and queue the approval notification. Message status will update after provider confirmation."
         confirmLabel="Approve Registration"
         busy={isDeciding}
         error={approveOpen ? error : undefined}
@@ -249,21 +250,26 @@ function VerificationContent({ expectedKind, superAdminFlow, returnPath }: { exp
       <ConfirmDialog
         open={rejectOpen}
         title="Reason for Rejection"
-        description="Explain what the applicant needs to correct."
+        description="Choose an applicable reason and review the message before confirming."
         confirmLabel="Reject Registration"
         danger
         busy={isDeciding}
-        confirmDisabled={reason.trim().length < 8}
+        confirmDisabled={!reasonCode || (reasonCode === "OTHER" && (!reasonReviewed || reason.trim().length < 8 || reason.trim().length > 500))}
         error={rejectOpen ? error : undefined}
         onClose={() => setRejectOpen(false)}
         onConfirm={() => decide("reject")}
       >
-        <TextArea
-          className="mt-4"
-          placeholder="Explain what the applicant needs to correct"
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-        />
+        <label className="mt-4 block text-sm font-medium" htmlFor="rejection-code">Rejection reason</label>
+        <select id="rejection-code" className="mt-2 w-full rounded-lg border border-line bg-white p-3 text-sm" value={reasonCode} disabled={isDeciding} onChange={(event) => { setReasonCode(event.target.value); setReasonReviewed(false); }}>
+          <option value="">Select a reason</option>
+          {Object.entries(rejectionReasons).filter(([code]) => record.kind !== "patient" || code !== "MISSING_DOCUMENTS").map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+        </select>
+        {reasonCode === "OTHER" ? <>
+          <label className="mt-3 block text-sm" htmlFor="custom-rejection">Custom correction instructions (8–500 characters)</label>
+          <TextArea id="custom-rejection" className="mt-2" maxLength={500} disabled={isDeciding} placeholder="Explain what to correct without sensitive information or internal notes" value={reason} onChange={(event) => { setReason(event.target.value); setReasonReviewed(false); }} />
+          <label className="mt-3 flex items-start gap-2 text-sm"><input type="checkbox" checked={reasonReviewed} disabled={isDeciding} onChange={(event) => setReasonReviewed(event.target.checked)} />I reviewed this reason. It is professional, suitable for the applicant, and contains no sensitive information or internal notes.</label>
+        </> : null}
+        {reasonCode ? <div className="mt-4 rounded-lg bg-panel p-3 text-sm"><strong>Message reason preview</strong><p className="mt-1 break-words">{reasonCode === "OTHER" ? reason.replace(/\s+/g, " ").trim() : rejectionReasons[reasonCode as keyof typeof rejectionReasons]}</p></div> : null}
       </ConfirmDialog>
     </div>
   );

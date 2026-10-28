@@ -5,10 +5,11 @@ import sharp from 'sharp';
 import { PDFDocument } from 'pdf-lib';
 import { PrismaService } from '../database/prisma.service';
 import { S3StorageService } from './s3-storage.service';
+import { importedMasterCodeError } from '../common/master-code';
 
 export type ValidatedFile = { slot: string; originalName: string; buffer: Buffer; contentType: string; size: number; sha256: string; extension: string };
 export type StagedDocument = Omit<ValidatedFile, 'buffer' | 'extension'> & { id: string; objectKey: string; versionId?: string };
-const slots: Record<RegistrationKind, { required: string[]; optional: string[] }> = {
+export const documentSlots: Record<RegistrationKind, { required: string[]; optional: string[] }> = {
   customer: { required: ['dl1', 'dl2', 'gstCertificate', 'shopOutside', 'shopInside'], optional: ['dl3'] },
   company: { required: ['companyLogo', 'adminPhoto'], optional: [] },
   patient: { required: [], optional: ['idProof'] },
@@ -26,14 +27,14 @@ export class DocumentsService implements OnModuleInit, OnModuleDestroy {
   }
   onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
 
-  async validateFiles(kind: RegistrationKind, files: Express.Multer.File[]): Promise<ValidatedFile[]> {
-    const policy = slots[kind];
+  async validateFiles(kind: RegistrationKind, files: Express.Multer.File[], options: { requireAll?: boolean } = {}): Promise<ValidatedFile[]> {
+    const policy = documentSlots[kind];
     const seen = new Set<string>();
     for (const file of files) {
       if (![...policy.required, ...policy.optional].includes(file.fieldname) || seen.has(file.fieldname)) throw new BadRequestException('Unexpected or repeated document field');
       seen.add(file.fieldname);
     }
-    for (const required of policy.required) if (!seen.has(required)) throw new BadRequestException(`${required} is required`);
+    for (const required of options.requireAll === false ? [] : policy.required) if (!seen.has(required)) throw new BadRequestException(`${required} is required`);
     const validated: ValidatedFile[] = [];
     for (const file of files) {
       const bytes = file.buffer;
@@ -67,8 +68,10 @@ export class DocumentsService implements OnModuleInit, OnModuleDestroy {
     }
     return validated;
   }
-  async stageUploads(kind: RegistrationKind, registrationId: string, files: ValidatedFile[]): Promise<{ batchId: string; documents: StagedDocument[] }> {
-    const documents: StagedDocument[] = files.map(({ buffer: _buffer, extension, ...file }) => ({ ...file, id: randomUUID(), objectKey: `registration/${kind}/${registrationId}/${randomUUID()}.${extension}` }));
+  async stageUploads(kind: RegistrationKind, registrationId: string, files: ValidatedFile[], importJobId?: string, importMasterCode?: string): Promise<{ batchId: string; documents: StagedDocument[] }> {
+    if (importMasterCode !== undefined && (!importJobId || importedMasterCodeError(importMasterCode))) throw new BadRequestException('Invalid import document Master Code');
+    const prefix = importMasterCode ? `imports/${kind}/${importMasterCode}` : importJobId ? `imports/${kind}/${importJobId}/${registrationId}` : `registration/${kind}/${registrationId}`;
+    const documents: StagedDocument[] = files.map(({ buffer: _buffer, extension, ...file }) => ({ ...file, id: randomUUID(), objectKey: `${prefix}/${randomUUID()}.${extension}` }));
     const batch = await this.prisma.uploadBatch.create({ data: { registrationId, cleanupAfter: new Date(Date.now() + 3600000), objects: { create: documents.map(doc => ({ objectKey: doc.objectKey })) } } });
     try {
       for (let i = 0; i < documents.length; i++) {

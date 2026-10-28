@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { FileInput } from "@/components/forms/file-input";
 import { TermsDialog } from "@/components/forms/terms-dialog";
@@ -16,6 +16,8 @@ type Values = z.infer<typeof customerRegistrationSchema>;
 
 export function CustomerRegistrationForm({ adminMode = false, onCreated }: { adminMode?: boolean; onCreated?: () => void }) {
   const router = useRouter();
+  const [masterCode, setMasterCode] = useState("");
+  const importKey = useRef<string | null>(null);
   const [serverError, setServerError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [termsOpen, setTermsOpen] = useState(false);
@@ -46,6 +48,7 @@ export function CustomerRegistrationForm({ adminMode = false, onCreated }: { adm
     setServerError("");
     setSuccessMessage("");
     const formData = new FormData();
+    if (adminMode) formData.set("masterCode", masterCode);
     Object.entries(values).forEach(([key, value]) => {
       if (value instanceof FileList) {
         if (value[0]) formData.append(key, value[0]);
@@ -60,13 +63,14 @@ export function CustomerRegistrationForm({ adminMode = false, onCreated }: { adm
       const response = await fetch(adminMode ? "/api/super-admin/registrations/single" : "/api/register/customer", {
         method: "POST",
         body: formData,
+        headers: adminMode ? { "Idempotency-Key": importKey.current ?? (importKey.current = crypto.randomUUID()) } : {},
       });
       const data = await response.json();
       if (!response.ok) {
         setServerError(data.error ?? "Registration failed");
         return;
       }
-      if (adminMode) { form.reset(); setSuccessMessage(`Customer registration ${data.registrationId} saved as Pending Verification.`); onCreated?.(); }
+      if (adminMode) { importKey.current = null; setMasterCode(""); form.reset(); setSuccessMessage(`Customer registration ${data.registrationId} approved and added to accounts.`); onCreated?.(); }
       else router.push("/register/success?type=customer");
     } catch {
       setServerError("Unable to submit registration. Check your connection and try again.");
@@ -74,7 +78,8 @@ export function CustomerRegistrationForm({ adminMode = false, onCreated }: { adm
   }
 
   return (
-    <form className="space-y-8" onSubmit={form.handleSubmit(onSubmit)}>
+    <form onChange={() => { importKey.current = null; }} className="space-y-8" onSubmit={event => { void form.handleSubmit(onSubmit)(event); }}>
+      {adminMode ? <Field label="Master Code *"><TextInput value={masterCode} onChange={event => setMasterCode(event.target.value)} required maxLength={128} placeholder="Original Master Code, e.g. C01234" /></Field> : null}
       <section className="grid gap-4 md:grid-cols-2">
         <h2 className="md:col-span-2 text-lg font-semibold text-foreground">Business Information</h2>
         <Field label="Name *" error={form.formState.errors.businessName?.message}>

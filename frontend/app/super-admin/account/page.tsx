@@ -2,8 +2,10 @@ import { redirect } from "next/navigation";
 import { AtSign, CalendarDays, Clock3, KeyRound, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { getSuperAdminAccount } from "@/lib/server/super-admin";
 import { backendEnabled } from "@/lib/server/backend-client";
-import { formatDateTime } from "@/lib/utils";
+import type { ReactNode } from "react";
+import { AccountTimestamp } from "@/components/account-timestamp";
 import { ChangeSuperAdminPassword } from "@/components/super-admin/change-password";
+import { currentBackendAccount } from "@/lib/server/current-account";
 
 export const metadata = { title: "Super Admin Account Information" };
 export const instant = false;
@@ -12,7 +14,7 @@ function getInitials(name: string) {
   return name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "SA";
 }
 
-function Detail({ icon: Icon, label, value }: { icon: typeof UserRound; label: string; value: string }) {
+function Detail({ icon: Icon, label, value }: { icon: typeof UserRound; label: string; value: ReactNode }) {
   return (
     <div className="flex min-w-0 items-start gap-3 rounded-xl border border-line bg-white p-4">
       <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-panel text-brand">
@@ -30,14 +32,20 @@ export default async function SuperAdminAccountPage() {
   const context = await getSuperAdminAccount();
   if (!context) redirect("/access-denied");
   const { account, store } = context;
-  if (!account.mfaEnabled || account.passwordChangeRequired) redirect("/super-admin/security-setup");
+  const usesBackend = backendEnabled();
+  const profile = usesBackend ? await currentBackendAccount() : null;
+  if (profile && (profile.role !== 'SUPER_ADMIN' || profile.status !== 'ACTIVE')) redirect('/access-denied');
+  if (!usesBackend && (!account.mfaEnabled || account.passwordChangeRequired)) redirect("/super-admin/security-setup");
 
-  const name = account.displayName || "Super Admin";
-  const email = account.email ?? "Not available";
-  const lastLogin = account.lastLoginAt ?? store.audit.find(
+  const name = profile ? profile.accountHolder || 'Not available' : account.displayName || "Super Admin";
+  const email = (profile ? profile.email : account.email) ?? "Not available";
+  const username = profile?.username ?? account.username;
+  const mfaEnabled = profile ? profile.security?.mfaEnabled === true : account.mfaEnabled;
+  const createdAt = profile?.createdAt ?? account.createdAt;
+  const lastLogin = profile ? profile.lastSuccessfulLogin : account.lastLoginAt ?? store.audit.find(
     (event) => event.actor.toLowerCase() === account.username.toLowerCase() && event.action === "super_admin_mfa_login_succeeded",
   )?.at;
-  const status = account.status.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const status = (profile?.status.toLowerCase() ?? account.status).replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 
   return (
     <section className="mx-auto max-w-5xl space-y-6 sm:space-y-8">
@@ -58,6 +66,7 @@ export default async function SuperAdminAccountPage() {
               <h2 className="text-xl font-semibold text-foreground sm:text-2xl">{name}</h2>
               <span className="rounded-full bg-panel px-3 py-1 text-xs font-semibold text-brand">Super Admin</span>
             </div>
+            <p className="mt-1 text-sm text-muted">{username}</p>
             <p className="mt-2 flex min-w-0 items-center gap-2 break-all text-sm text-muted"><Mail aria-hidden="true" className="size-4 shrink-0" />{email}</p>
           </div>
           <span className="inline-flex w-fit items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
@@ -74,7 +83,7 @@ export default async function SuperAdminAccountPage() {
           </div>
           <dl className="grid gap-3">
             <Detail icon={UserRound} label="Account holder" value={name} />
-            <Detail icon={AtSign} label="Username" value={account.username} />
+            <Detail icon={AtSign} label="Username" value={username} />
             <Detail icon={Mail} label="Registered email" value={email} />
           </dl>
         </article>
@@ -85,8 +94,8 @@ export default async function SuperAdminAccountPage() {
             <div><h2 className="font-semibold text-foreground">Account Details</h2><p className="mt-0.5 text-xs text-muted">Status and recent account activity</p></div>
           </div>
           <dl className="grid gap-3">
-            <Detail icon={CalendarDays} label="Account created" value={account.createdAt ? formatDateTime(account.createdAt) : "Not available"} />
-            <Detail icon={Clock3} label="Last successful login" value={lastLogin ? formatDateTime(lastLogin) : "Not recorded yet"} />
+            <Detail icon={CalendarDays} label="Account created" value={<AccountTimestamp value={createdAt} />} />
+            <Detail icon={Clock3} label="Last successful login" value={<AccountTimestamp value={lastLogin} empty="Never" />} />
           </dl>
         </article>
       </div>
@@ -97,11 +106,11 @@ export default async function SuperAdminAccountPage() {
             <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><ShieldCheck aria-hidden="true" className="size-5" /></span>
             <div><h2 className="font-semibold text-foreground">Security Settings</h2><p className="mt-1 max-w-2xl text-sm leading-6 text-muted">Authenticator verification is enabled for Super Admin sign-in. Your security credentials are never displayed here.</p></div>
           </div>
-          <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
-            <KeyRound aria-hidden="true" className="size-4" /> MFA verified
-          </span>
+          {mfaEnabled ? <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+            <KeyRound aria-hidden="true" className="size-4" /> MFA Verified
+          </span> : <p role="status" className="text-sm text-danger">Authenticator setup or recovery is required.</p>}
         </div>
-        {backendEnabled() ? <p className="text-sm text-muted">Manage your password through Amazon Cognito.</p> : <ChangeSuperAdminPassword />}
+        {mfaEnabled && <ChangeSuperAdminPassword backend={usesBackend} />}
       </article>
     </section>
   );

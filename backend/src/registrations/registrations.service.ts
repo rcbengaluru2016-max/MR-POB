@@ -1,14 +1,17 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ErpUser, Prisma, RegistrationKind, RegistrationStatus } from '@prisma/client';
-import { createHmac, randomUUID } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import { DocumentsService } from '../documents/documents.service';
 import { ConfigService } from '../config/config.service';
 import { CompanyRegistrationDto, CustomerRegistrationDto, PatientRegistrationDto, RegistrationInput, RegistrationQueryDto } from './registration.dto';
 import { RegistrationDecisionDto } from './management.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { validateRejection } from './rejection-reasons';
+import { hashRegistrationPassword } from '../auth/registration-password';
+import { generatedMasterCodeSerial, importedMasterCodeError } from '../common/master-code';
 
-const detailsInclude = { customer: { include: { address: true } }, company: true, patient: true, documents: true } satisfies Prisma.RegistrationInclude;
+const detailsInclude = { customer: { include: { address: true } }, company: true, patient: true, documents: true, decidedBy: { select: { displayName: true } }, owner: { select: { state: true, username: true } }, notifications: { select: { status: true, event: true }, orderBy: { createdAt: 'desc' }, take: 1 } } satisfies Prisma.RegistrationInclude;
 type DetailedRegistration = Prisma.RegistrationGetPayload<{ include: typeof detailsInclude }>;
 const prefixes: Record<RegistrationKind, string> = { customer: 'REG-CUS', company: 'REG-COM', patient: 'REG-PAT' };
 
@@ -22,8 +25,8 @@ export class RegistrationsService {
     }
     const validated = await this.documents.validateFiles(kind, files);
     const normalized = this.normalize(kind, input);
-    // Stable canonical input excludes credentials, which never leave validation memory.
-    const canonical = JSON.stringify({ kind, fields: Object.entries(normalized).filter(([, value]) => value !== undefined).sort(([a], [b]) => a.localeCompare(b)), files: validated.map(file => ({ slot: file.slot, sha256: file.sha256 })).sort((a, b) => a.slot.localeCompare(b.slot)) });
+    // A keyed fingerprint binds retries to the same credentials without storing them.
+    const canonical = JSON.stringify({ kind, ...(input.password ? { credentialFingerprint: this.hmac(`credential:${input.password}`) } : {}), fields: Object.entries(normalized).filter(([, value]) => value !== undefined).sort(([a], [b]) => a.localeCompare(b)), files: validated.map(file => ({ slot: file.slot, sha256: file.sha256 })).sort((a, b) => a.slot.localeCompare(b.slot)) });
     const requestHash = this.hmac(canonical);
     const idempotencyKey = suppliedKey ? this.hmac(`registration:${suppliedKey}`) : undefined;
     if (idempotencyKey) {
@@ -39,7 +42,11 @@ export class RegistrationsService {
       throw new ConflictException('A customer registration already exists for this GST number');
     }
 
-    const id = `${prefixes[kind]}-${randomUUID()}`;
+    // PostgreSQL nextval is atomic across every backend instance and all kinds.
+    // Allocate before uploads so the existing S3 keys and manifest keep the final ID.
+    const [{ serial }] = await this.prisma.$queryRaw<{ serial: bigint }[]>`SELECT nextval('registration_submission_seq') AS serial`;
+    const id = `${prefixes[kind]}-ZI${serial.toString().padStart(4, '0')}`;
+    const passwordHash = input.password ? await hashRegistrationPassword(input.password) : undefined;
     const staged = await this.documents.stageUploads(kind, id, validated);
     try {
       const record = await this.prisma.$transaction(async tx => {
@@ -48,7 +55,7 @@ export class RegistrationsService {
         const claim = await tx.uploadBatch.updateMany({ where: { id: staged.batchId, completedAt: null, cleanupStartedAt: null }, data: { completedAt: new Date() } });
         if (claim.count !== 1) throw new ServiceUnavailableException('Upload attempt expired; please retry registration');
         const created = await tx.registration.create({ data: {
-          id, kind, mobile, email, status: RegistrationStatus.PENDING, requestHash, idempotencyKey,
+          id, kind, mobile, email, passwordHash, status: RegistrationStatus.PENDING, requestHash, idempotencyKey,
           termsAcceptedAt: new Date(), termsVersion: 'registration-v1',
           ...this.profileCreate(kind, normalized),
           documents: { create: staged.documents },
@@ -75,10 +82,10 @@ export class RegistrationsService {
     const { kind, status, page, pageSize } = query;
     const where = { kind, ...(status ? { status } : {}) };
     const [records, total] = await this.prisma.$transaction([
-      this.prisma.registration.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }], include: { customer: true, company: true, patient: true, owner: { select: { state: true } } } }),
+      this.prisma.registration.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }], include: { customer: true, company: true, patient: true, owner: { select: { state: true } }, notifications: detailsInclude.notifications } }),
       this.prisma.registration.count({ where }),
     ], { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
-    return { items: records.map(record => ({ id: record.id, kind: record.kind, status: record.status, submittedAt: record.submittedAt, mobile: record.mobile, email: record.email ?? '', accountStatus: record.owner?.state === 'ACTIVE' ? 'active' : 'inactive', name: record.customer?.customerName ?? record.company?.companyName ?? record.patient?.patientName ?? '', businessType: record.customer?.customerType ?? record.company?.companyName ?? 'Patient' })), total, page, pageSize };
+    return { items: records.map(record => ({ id: record.id, masterCode: record.masterCode, kind: record.kind, status: record.status, submittedAt: record.submittedAt, mobile: record.mobile, email: record.email ?? '', accountStatus: record.owner?.state === 'ACTIVE' ? 'active' : 'inactive', activationPending: record.owner?.state !== 'ACTIVE', notificationStatus: record.notifications[0]?.status ?? null, name: record.customer?.customerName ?? record.company?.companyName ?? record.patient?.patientName ?? '', businessType: record.customer?.customerType ?? record.company?.companyName ?? 'Patient' })), total, page, pageSize };
   }
 
   async summary(kind: RegistrationKind) {
@@ -100,29 +107,82 @@ export class RegistrationsService {
 
   async decide(id: string, input: RegistrationDecisionDto, actorId: string) {
     if (!['approve', 'reject'].includes(input.action)) throw new BadRequestException('Invalid decision');
-    if (input.action === 'reject' && (!input.reason || input.reason.trim().length < 8 || input.reason.length > 2000)) throw new BadRequestException('Rejection reason must contain 8–2000 characters');
-    return this.prisma.$transaction(async tx => {
+    let rejection: ReturnType<typeof validateRejection> | undefined;
+    if (input.action === 'reject') {
+      try { rejection = validateRejection(input); } catch (error) { throw new BadRequestException((error as Error).message); }
+    }
+    return this.prisma.$transaction(tx => this.decideInTransaction(tx, id, input, actorId));
+  }
+
+  async decideInTransaction(tx: Prisma.TransactionClient, id: string, input: RegistrationDecisionDto, actorId: string, importedMasterCode?: string) {
+    const rejection = input.action === 'reject' ? validateRejection(input) : undefined;
       // Lock database authority until commit; concurrent account revocation waits
       // for this decision, or commits first and prevents the decision.
       const actors = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "ErpUser" WHERE "id" = ${actorId}::uuid AND "state" = 'ACTIVE' AND "role" IN ('ADMIN', 'SUPER_ADMIN') FOR SHARE`;
       if (!actors.length) throw new ForbiddenException('Administrator access required');
+      await tx.$queryRaw`SELECT "id" FROM "Registration" WHERE "id" = ${id} FOR UPDATE`;
+      const current = await tx.registration.findUnique({ where: { id }, include: detailsInclude });
+      if (!current) throw new NotFoundException('Registration not found');
+      if (current.status === 'APPROVED' && input.action === 'approve') {
+        if (!current.masterCode || !current.ownerId) throw new ConflictException('Approved registration requires account reconciliation');
+        return { ok: true, status: current.status, decidedAt: current.decidedAt, masterCode: current.masterCode, activationPending: current.owner?.state !== 'ACTIVE', accountStatus: current.owner?.state === 'ACTIVE' ? 'active' : 'inactive', notificationStatus: current.notifications[0]?.status ?? null };
+      }
+      if (rejection) {
+        try { validateRejection(input, current.kind); } catch (error) { throw new BadRequestException((error as Error).message); }
+      }
+      if (current.status === 'REJECTED' && input.action === 'reject') return { ok: true, status: current.status, decidedAt: current.decidedAt, rejectionReason: current.rejectionExpiresAt && current.rejectionExpiresAt > new Date() ? current.rejectionReason : null, notificationStatus: current.notifications[0]?.status ?? null };
+      if (current.status !== 'PENDING') throw new ConflictException('Registration has already been decided');
       const status = input.action === 'approve' ? RegistrationStatus.APPROVED : RegistrationStatus.REJECTED;
       const decidedAt = new Date();
-      // Conditional write prevents two reviewers from overwriting one another.
-      const result = await tx.registration.updateMany({ where: { id, status: 'PENDING' }, data: { status, decidedAt, decidedById: actorId, rejectionReason: status === 'REJECTED' ? input.reason : null } });
-      if (!result.count) {
-        if (!await tx.registration.findUnique({ where: { id }, select: { id: true } })) throw new NotFoundException('Registration not found');
-        throw new ConflictException('Registration has already been decided');
+      let masterCode: string | null = null;
+      let ownerId = current.ownerId;
+      if (status === 'APPROVED') {
+        // Serialize allocations through commit to keep the dedicated sequence in
+        // approval order; row locks above also make repeat decisions idempotent.
+        await tx.$queryRaw`SELECT 1::int FROM pg_advisory_xact_lock(26002601)`;
+        if (importedMasterCode !== undefined) {
+          if (importedMasterCodeError(importedMasterCode)) throw new BadRequestException('Invalid Master Code');
+          masterCode = importedMasterCode;
+          const serial = generatedMasterCodeSerial(importedMasterCode);
+          // Legacy prefixes leave the new-user sequence alone. Imported ZI codes
+          // still reserve their numeric range so ordinary approvals cannot reuse it.
+          if (serial !== undefined) await tx.$queryRaw`SELECT setval('approved_master_seq', GREATEST((SELECT last_value FROM approved_master_seq), ${serial}::bigint))`;
+        } else {
+          const [{ serial }] = await tx.$queryRaw<{ serial: bigint }[]>`SELECT nextval('approved_master_seq') AS serial`;
+          masterCode = `ZI${serial.toString().padStart(4, '0')}`;
+        }
+        const role = ({ customer: 'CUSTOMER', company: 'COMPANY', patient: 'PATIENT' } as const)[current.kind];
+        if (ownerId) {
+          const owner = await tx.erpUser.findUniqueOrThrow({ where: { id: ownerId } });
+          if (owner.role !== role) throw new ConflictException('Registration owner role does not match');
+          await tx.erpUser.update({ where: { id: ownerId }, data: { state: 'ACTIVE' } });
+        } else {
+          const emailUsed = current.email ? await tx.erpUser.findFirst({ where: { email: { equals: current.email, mode: 'insensitive' } }, select: { id: true } }) : null;
+          const owner = await tx.erpUser.create({ data: {
+            username: masterCode, email: emailUsed ? null : current.email,
+            displayName: current.customer?.customerName ?? current.company?.adminFullName ?? current.patient?.patientName ?? id,
+            role, state: 'ACTIVE', createdById: actorId,
+          } });
+          ownerId = owner.id;
+        }
       }
-      await tx.auditEvent.create({ data: { actorId, registrationId: id, action: `REGISTRATION_${status}`, detail: { status, ...(status === 'REJECTED' ? { reason: input.reason! } : {}) } } });
+      // Status, master code, owner, audit and outbox commit or roll back together.
+      await tx.registration.update({ where: { id }, data: { status, masterCode, ownerId, decidedAt, decidedById: actorId, rejectionReason: rejection?.reason ?? null, rejectionReasonCode: rejection?.code ?? null, rejectionExpiresAt: rejection ? new Date(decidedAt.getTime() + 30 * 86400000) : null } });
+      await tx.auditEvent.create({ data: { actorId, registrationId: id, action: `REGISTRATION_${status}`, detail: { status, ...(masterCode ? { masterCode } : {}) } } });
       const registration = await tx.registration.findUniqueOrThrow({ where: { id }, select: { id: true, kind: true, mobile: true } });
       await NotificationsService.record(tx, registration, status);
-      return { ok: true, status, decidedAt, activationPending: true };
-    });
+      const owner = ownerId ? await tx.erpUser.findUnique({ where: { id: ownerId }, select: { state: true } }) : null;
+      return { ok: true, status, decidedAt, rejectionReason: rejection?.reason ?? null, masterCode, activationPending: owner?.state !== 'ACTIVE', accountStatus: owner?.state === 'ACTIVE' ? 'active' : 'inactive', notificationStatus: 'PENDING' };
   }
 
   async approved(query: RegistrationQueryDto) {
-    return this.list({ ...query, status: 'APPROVED' });
+    const { kind, page, pageSize } = query;
+    const where = { kind, status: RegistrationStatus.APPROVED };
+    const [records, total] = await this.prisma.$transaction([
+      this.prisma.registration.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }], include: detailsInclude }),
+      this.prisma.registration.count({ where }),
+    ], { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    return { items: records.map(record => ({ ...this.toDetail(record), name: record.customer?.customerName ?? record.company?.companyName ?? record.patient?.patientName ?? '', businessType: record.customer?.customerType ?? record.company?.companyName ?? 'Patient' })), total, page, pageSize };
   }
 
   async mine(user: ErpUser) {
@@ -131,6 +191,41 @@ export class RegistrationsService {
     const records = await this.prisma.registration.findMany({ where: { ownerId: user.id, kind, status: 'APPROVED' }, include: detailsInclude, orderBy: { id: 'asc' } });
     if (!records.length) throw new ForbiddenException('Approved registration owner required');
     return { items: records.map(record => ({ ...this.toDetail(record), readOnly: true, activationPending: false })) };
+  }
+
+  async allocateImportId(kind: RegistrationKind) {
+    const [{ serial }] = await this.prisma.$queryRaw<{ serial: bigint }[]>`SELECT nextval('registration_submission_seq') AS serial`;
+    return `${prefixes[kind]}-ZI${serial.toString().padStart(4, '0')}`;
+  }
+
+  async allocateImportMasterCode(suppliedCodes: string[]) {
+    const reserved = new Set(suppliedCodes);
+    return this.prisma.$transaction(async tx => {
+      // Share the ordinary approval allocator's lock and sequence. Reserving a
+      // number may leave a gap on cancellation, but a retry never reuses it.
+      await tx.$queryRaw`SELECT 1::int FROM pg_advisory_xact_lock(26002601)`;
+      for (;;) {
+        const [{ serial }] = await tx.$queryRaw<{ serial: bigint }[]>`SELECT nextval('approved_master_seq') AS serial`;
+        const code = `ZI${serial.toString().padStart(4, '0')}`;
+        if (reserved.has(code)) continue;
+        if (await tx.registration.findUnique({ where: { masterCode: code }, select: { id: true } })
+          || await tx.erpUser.findUnique({ where: { username: code }, select: { id: true } })
+          || await tx.importRecord.findFirst({ where: { masterCode: code, job: { deletedAt: null, status: { in: ['VALIDATING', 'READY', 'IMPORTING'] }, expiresAt: { gt: new Date() } } }, select: { id: true } })) continue;
+        return code;
+      }
+    }, { timeout: 30000, maxWait: 15000 });
+  }
+
+  async createImported(tx: Prisma.TransactionClient, id: string, kind: RegistrationKind, input: RegistrationInput, passwordHash: string | undefined, documents: Prisma.DocumentCreateWithoutRegistrationInput[], actorId: string, jobId: string, masterCode: string, source: string) {
+    const fields = this.normalize(kind, input);
+    await tx.registration.create({ data: { id, kind, mobile: fields.mobile!, email: fields.email, passwordHash,
+      registrationSource: source, importedById: actorId, importedAt: new Date(), importJobId: jobId,
+      requestHash: this.hmac(`import:${jobId}:${id}`), termsAcceptedAt: new Date(), termsVersion: 'registration-v1',
+      ...this.profileCreate(kind, fields), documents: { create: documents },
+    } });
+    const decision = await this.decideInTransaction(tx, id, { action: 'approve' } as RegistrationDecisionDto, actorId, masterCode);
+    await tx.auditEvent.create({ data: { actorId, registrationId: id, action: 'ADMINISTRATIVE_IMPORT', detail: { jobId, approvalSource: 'Administrative Import' } } });
+    return decision;
   }
 
   private hmac(value: string) { return createHmac('sha256', this.config.get('IDEMPOTENCY_SECRET')).update(value).digest('hex'); }
@@ -175,9 +270,10 @@ export class RegistrationsService {
     const addressFields = customerAddress ? { addressLine1: customerAddress.addressLine1, addressLine2: customerAddress.addressLine2, addressLine3: customerAddress.addressLine3, addressLine4: customerAddress.addressLine4, pinCode: customerAddress.pinCode, address: [customerAddress.addressLine1, customerAddress.addressLine2, customerAddress.addressLine3, customerAddress.addressLine4, customerAddress.pinCode].filter(Boolean).join(', ') } : {};
     return {
       ...fields, ...addressFields,
-      id: record.id, kind: record.kind, status: record.status, submittedAt: record.submittedAt,
+      importedBy: record.importedById ? record.decidedBy?.displayName : null, registrationSource: record.registrationSource, importedById: record.importedById, importedAt: record.importedAt, importJobId: record.importJobId,
+      id: record.id, masterCode: record.masterCode, accountUsername: record.owner?.username ?? null, kind: record.kind, status: record.status, submittedAt: record.submittedAt,
       mobile: record.mobile, email: record.email, termsAcceptedAt: record.termsAcceptedAt, termsVersion: record.termsVersion,
-      decidedAt: record.decidedAt, decidedById: record.decidedById, rejectionReason: record.rejectionReason, readOnly: false, activationPending: true,
+      decidedAt: record.decidedAt, decidedById: record.decidedById, rejectionReason: record.rejectionExpiresAt && record.rejectionExpiresAt > new Date() ? record.rejectionReason : null, rejectionReasonCode: record.rejectionExpiresAt && record.rejectionExpiresAt > new Date() ? record.rejectionReasonCode : null, rejectionExpiresAt: record.rejectionExpiresAt, readOnly: false, activationPending: record.owner?.state !== 'ACTIVE', accountStatus: record.owner?.state === 'ACTIVE' ? 'active' : 'inactive', notificationStatus: record.notifications[0]?.status ?? null,
       files: Object.fromEntries(record.documents.map(file => [file.slot, { id: file.id, name: file.originalName, type: file.contentType, size: file.size, sha256: file.sha256, accessPath: `/api/documents/${file.id}` }])),
     };
   }

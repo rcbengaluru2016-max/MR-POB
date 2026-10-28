@@ -13,6 +13,7 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     ".backend-http-e2e-*/**",
+    ".imports-production-check-*/**",
   ]),
 ]);
 

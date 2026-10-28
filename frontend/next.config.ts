@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
   experimental: {
     agentFeedback: true,
     agentUpgrade: "security",
-    proxyClientMaxBodySize: "32mb",
+    proxyClientMaxBodySize: "80mb",
   },
   cacheComponents: true,
   partialPrefetching: true,
@@ -35,6 +35,7 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: securityHeaders,
       },
+      { source: "/reset-password", headers: [{ key: "Referrer-Policy", value: "no-referrer" }, { key: "Cache-Control", value: "no-store" }] },
       {
         // Only the product image form needs same-origin camera access.
         source: "/company/product-uploading",

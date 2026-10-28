@@ -1,5 +1,6 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, rm, rmdir } from "node:fs/promises";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { createSalt, hashPassword } from "@/lib/crypto";
 import type {
   AccountRecord,
@@ -15,17 +16,24 @@ import type {
   PasswordResetToken,
   RegistrationUpload,
   RegistrationRecord,
+  RegistrationNotification,
   StoredCustomerRegistration,
   UploadedFile,
 } from "@/lib/types";
 import { LEGACY_SUPER_ADMIN_EMAILS, SUPER_ADMIN_EMAIL } from "@/lib/server/super-admin-config";
 import { encryptMfaSecret, isEncryptedMfaSecret } from "@/lib/server/mfa-secret";
 
-const DATA_DIR = path.resolve(process.cwd(), "..", ".data");
+const BASE_DATA_DIR = process.env.ZENEX_DATA_DIR ? path.resolve(process.env.ZENEX_DATA_DIR) : path.resolve(process.cwd(), "..", ".data");
+const backendAuthority = process.env.BACKEND_API_URL?.trim().replace(/\/$/, "");
+// Company operational keys are Master Codes, so isolate each backend authority
+// from local demo accounts and from other databases that may reuse the same code.
+const DATA_DIR = backendAuthority ? path.join(BASE_DATA_DIR, `backend-operational-${createHash("sha256").update(backendAuthority).digest("hex").slice(0, 16)}`) : BASE_DATA_DIR;
 const STORE_PATH = path.join(DATA_DIR, "store.json");
 
 export type AppStore = {
   counters: {
+    registration?: number;
+    master?: number;
     customerReg: number;
     companyReg: number;
     patientReg: number;
@@ -34,6 +42,7 @@ export type AppStore = {
     patientMaster: number;
   };
   registrations: RegistrationRecord[];
+  registrationNotifications?: RegistrationNotification[];
   masters: MasterRecord[];
   accounts: AccountRecord[];
   companyEmployees: CompanyEmployee[];
@@ -253,17 +262,37 @@ const storeGlobals = globalThis as typeof globalThis & {
   __zenexStoreTransactionQueue?: Promise<void>;
 };
 
+async function lockStoreFile() {
+  await mkdir(DATA_DIR, { recursive: true });
+  const lockPath = path.join(DATA_DIR, "registration-transaction.lock");
+  const deadline = Date.now() + 15000;
+  while (true) {
+    try {
+      await mkdir(lockPath);
+      return async () => { await rmdir(lockPath).catch(() => undefined); };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if (Date.now() >= deadline) throw new Error("Another store update is in progress. Please retry.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+}
+
 export async function transactStore<T>(mutate: (draft: AppStore) => Promise<T> | T): Promise<T> {
   const previous = storeGlobals.__zenexStoreTransactionQueue ?? Promise.resolve();
   let release!: () => void;
   storeGlobals.__zenexStoreTransactionQueue = new Promise<void>((resolve) => { release = resolve; });
   await previous;
+  let unlock: (() => Promise<void>) | undefined;
   try {
+    await getStore();
+    unlock = await lockStoreFile();
     const draft = structuredClone(await refreshStore());
     const result = await mutate(draft);
     await persistStore(draft);
     return result;
   } finally {
+    await unlock?.();
     release();
   }
 }
@@ -290,6 +319,12 @@ export async function refreshStore(): Promise<AppStore> {
 }
 
 async function initializeStore() {
+  const unlock = await lockStoreFile();
+  try { return await initializeStoreUnlocked(); }
+  finally { await unlock(); }
+}
+
+async function initializeStoreUnlocked() {
   await mkdir(DATA_DIR, { recursive: true });
   let store: AppStore;
   try {
@@ -346,10 +381,15 @@ function migrateLegacyMrData(raw: Record<string, unknown>): AppStore {
 }
 
 export async function persistStore(store: AppStore) {
-  memory = store;
   const write = writeQueue.then(async () => {
     await mkdir(DATA_DIR, { recursive: true });
-    await writeFile(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
+    const temporaryPath = path.join(DATA_DIR, `store-${crypto.randomUUID()}.tmp`);
+    try {
+      await writeFile(temporaryPath, JSON.stringify(store, null, 2), "utf8");
+      await rename(temporaryPath, STORE_PATH);
+      memory = store;
+      initialization = Promise.resolve(store);
+    } finally { await rm(temporaryPath, { force: true }).catch(() => undefined); }
   });
   writeQueue = write.catch(() => undefined);
   await write;

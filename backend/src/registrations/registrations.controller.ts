@@ -69,7 +69,7 @@ export class OwnedRegistrationsController {
 
 const listItemSchema = {
   type: 'object' as const, required: ['id', 'kind', 'status', 'submittedAt', 'name', 'mobile', 'businessType'],
-  properties: { id: { type: 'string' }, kind: { type: 'string', enum: ['customer', 'company', 'patient'] }, status: { type: 'string', enum: ['PENDING', 'APPROVED', 'REJECTED'] }, submittedAt: { type: 'string', format: 'date-time' }, name: { type: 'string' }, mobile: { type: 'string' }, email: { type: 'string' }, accountStatus: { type: 'string', enum: ['active', 'inactive'] }, businessType: { type: 'string' } },
+  properties: { id: { type: 'string', example: 'REG-CUS-ZI0001' }, masterCode: { type: 'string', nullable: true, example: 'ZI0001' }, notificationStatus: { type: 'string', nullable: true }, activationPending: { type: 'boolean' }, kind: { type: 'string', enum: ['customer', 'company', 'patient'] }, status: { type: 'string', enum: ['PENDING', 'APPROVED', 'REJECTED'] }, submittedAt: { type: 'string', format: 'date-time' }, name: { type: 'string' }, mobile: { type: 'string' }, email: { type: 'string' }, accountStatus: { type: 'string', enum: ['active', 'inactive'] }, businessType: { type: 'string' } },
 };
 
 @ApiTags('Admin registrations')
@@ -103,14 +103,14 @@ export class AdminRegistrationsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Complete registration fields and document metadata without storage URLs or credentials' })
-  @ApiOkResponse({ schema: { type: 'object', properties: { record: { type: 'object', description: 'Common registration fields, type-specific customer/company/patient fields, readOnly:false, activationPending:true and files keyed by slot.', properties: { ...listItemSchema.properties, readOnly: { type: 'boolean', enum: [false] }, activationPending: { type: 'boolean', enum: [true] }, email: { type: 'string', nullable: true }, termsAcceptedAt: { type: 'string', format: 'date-time' }, termsVersion: { type: 'string' }, decidedAt: { type: 'string', format: 'date-time', nullable: true }, rejectionReason: { type: 'string', nullable: true }, files: { type: 'object', additionalProperties: { type: 'object', properties: { id: { type: 'string', format: 'uuid' }, name: { type: 'string' }, type: { type: 'string' }, size: { type: 'integer' }, sha256: { type: 'string' }, accessPath: { type: 'string' } } } } }, additionalProperties: true } } } })
+  @ApiOkResponse({ schema: { type: 'object', properties: { record: { type: 'object', description: 'Common registration fields, type-specific customer/company/patient fields, readOnly:false, Master Code, account and notification status, and files keyed by slot.', properties: { ...listItemSchema.properties, readOnly: { type: 'boolean', enum: [false] }, activationPending: { type: 'boolean' }, email: { type: 'string', nullable: true }, termsAcceptedAt: { type: 'string', format: 'date-time' }, termsVersion: { type: 'string' }, decidedAt: { type: 'string', format: 'date-time', nullable: true }, rejectionReason: { type: 'string', nullable: true }, files: { type: 'object', additionalProperties: { type: 'object', properties: { id: { type: 'string', format: 'uuid' }, name: { type: 'string' }, type: { type: 'string' }, size: { type: 'integer' }, sha256: { type: 'string' }, accessPath: { type: 'string' } } } } }, additionalProperties: true } } } })
   @ApiNotFoundResponse({ description: 'Registration not found.' })
   detail(@Param('id') id: string) { return this.registrations.detail(id); }
 
   @Post(':id/decision')
-  @ApiOperation({ summary: 'Approve/reject a pending registration; records an audited decision without provisioning credentials, master records or activation email' })
-  @ApiCreatedResponse({ schema: { type: 'object', properties: { ok: { type: 'boolean' }, status: { type: 'string', enum: ['APPROVED', 'REJECTED'] }, decidedAt: { type: 'string', format: 'date-time' }, activationPending: { type: 'boolean', enum: [true] } } } })
-  @ApiBadRequestResponse({ description: 'Invalid action or missing rejection reason (8–2000 characters).' })
+  @ApiOperation({ summary: 'Approve atomically with a shared Master Code, linked owner and notification outbox, or reject; repeat decisions are idempotent' })
+  @ApiCreatedResponse({ schema: { type: 'object', properties: { ok: { type: 'boolean' }, status: { type: 'string', enum: ['APPROVED', 'REJECTED'] }, masterCode: { type: 'string', nullable: true, example: 'ZI0001' }, decidedAt: { type: 'string', format: 'date-time' }, activationPending: { type: 'boolean' }, accountStatus: { type: 'string', enum: ['active', 'inactive'] }, notificationStatus: { type: 'string', nullable: true } } } })
+  @ApiBadRequestResponse({ description: 'Invalid action, structured rejection reason, or unreviewed/invalid custom text (8–500 characters).' })
   @ApiNotFoundResponse({ description: 'Registration not found.' })
   @ApiConflictResponse({ description: 'Registration already decided by a reviewer.' })
   decide(@Param('id') id: string, @Body() input: RegistrationDecisionDto, @Req() request: AuthenticatedRequest) { return this.registrations.decide(id, input, request.user.id); }

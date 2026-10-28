@@ -113,6 +113,8 @@ export type StoredCustomerRegistration = {
     shopInside: UploadedFile;
   };
   rejectionReason?: string;
+  rejectionReasonCode?: string;
+  rejectionExpiresAt?: string;
   decidedAt?: string;
   decidedBy?: string;
 };
@@ -135,6 +137,8 @@ export type StoredCompanyRegistration = {
     adminPhoto: UploadedFile;
   };
   rejectionReason?: string;
+  rejectionReasonCode?: string;
+  rejectionExpiresAt?: string;
   decidedAt?: string;
   decidedBy?: string;
 };
@@ -156,6 +160,8 @@ export type StoredPatientRegistration = {
     idProof: UploadedFile;
   };
   rejectionReason?: string;
+  rejectionReasonCode?: string;
+  rejectionExpiresAt?: string;
   decidedAt?: string;
   decidedBy?: string;
 };
@@ -164,6 +170,19 @@ export type RegistrationRecord =
   | StoredCustomerRegistration
   | StoredCompanyRegistration
   | StoredPatientRegistration;
+
+export type RegistrationNotification = {
+  id: string;
+  registrationId: string;
+  event: "APPROVED" | "REJECTED";
+  recipient: string;
+  templateKey: "customer_registration_approved" | "patient_registration_approved" | "company_admin_approved" | "registration_rejected";
+  variables: string[];
+  status: "NOT_CONFIGURED" | "PENDING" | "RETRY" | "PROCESSING" | "MOCKED" | "ACCEPTED" | "DELIVERED" | "BLOCKED" | "UNKNOWN" | "FAILED" | "EXPIRED";
+  attempts: number;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type CustomerMaster = {
   kind: "customer";
@@ -423,4 +442,7 @@ export type SessionUser = {
   username: string;
   userType: UserType;
   displayName: string;
+  email?: string;
+  createdAt?: string;
+  lastLoginAt?: string;
 };

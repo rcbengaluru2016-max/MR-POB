@@ -16,8 +16,8 @@ const links = [
   { href: "/company/reports", label: "Reports" },
 ];
 
-export function CompanyAdminShell({ children, accountName }: {
-  children: ReactNode; accountName: string;
+export function CompanyAdminShell({ children, accountName, masterCode }: {
+  children: ReactNode; accountName: string; masterCode?: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -50,6 +50,7 @@ export function CompanyAdminShell({ children, accountName }: {
         })}
       </nav>
       <div className="company-sidebar-account">
+        {masterCode ? <p className="mb-3 text-xs text-muted">Master Code: <span className="font-mono font-semibold">{masterCode}</span></p> : null}
         {logoutError && <p className="company-error" role="alert">{logoutError}</p>}
         <Link href="/company/account-information" className={cn("company-account-link", pathname === "/company/account-information" && "is-active")} aria-current={pathname === "/company/account-information" ? "page" : undefined} aria-label="Account Information" title="Account Information">
           {initials}

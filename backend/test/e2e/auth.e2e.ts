@@ -1,5 +1,40 @@
 import { test, expect } from '@playwright/test';
 
+test('dashboard recovers after an analytics error by retrying or changing the date range', async ({ page }) => {
+  let failRequests = true;
+  await page.route('**/api/super-admin/analytics?*', async route => {
+    if (failRequests) {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Temporary dashboard database failure' }) });
+    } else {
+      await route.continue();
+    }
+  });
+  await page.goto('/login');
+  await page.locator('[name="username"]').fill('browser-admin');
+  await page.locator('[name="password"]').fill('BrowserPass123');
+  await page.getByRole('button', { name: 'LOGIN', exact: true }).click();
+  await expect(page).toHaveURL(/\/super-admin\/dashboard$/);
+  await page.goto('/super-admin/dashboard');
+  await expect(page.getByRole('main').getByRole('alert')).toContainText('Temporary dashboard database failure');
+  failRequests = false;
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Registration KPIs' })).toBeVisible();
+  await expect(page.getByRole('main').getByRole('alert')).toHaveCount(0);
+  failRequests = true;
+  await page.getByRole('combobox').selectOption('weekly');
+  await expect(page.getByRole('main').getByRole('alert')).toContainText('Temporary dashboard database failure');
+  failRequests = false;
+  await page.getByRole('combobox').selectOption('daily');
+  await expect(page.getByRole('region', { name: 'Registration KPIs' })).toBeVisible();
+  await expect(page.getByRole('main').getByRole('alert')).toHaveCount(0);
+  await page.getByRole('combobox').selectOption('custom');
+  await expect(page.getByRole('status')).toContainText('Choose a start and end date');
+  await expect(page.getByText('Loading registration analytics…')).toHaveCount(0);
+  await page.getByRole('combobox').selectOption('monthly');
+  await expect(page.getByRole('region', { name: 'Registration KPIs' })).toBeVisible();
+  await page.screenshot({ path: '.local/sequential-tests/dashboard-recovered.png', fullPage: true });
+});
+
 test('MFA sessions stay private and legacy cookies and cross-origin mutations are rejected', async ({ page, context }) => {
   await page.goto('/login');
   await page.locator('[name="username"]').fill('browser-mfa');

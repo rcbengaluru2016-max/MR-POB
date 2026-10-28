@@ -11,12 +11,14 @@ async function main() {
   // Dependencies resolve from the parent frontend/node_modules; avoid watcher junctions.
   for (const file of ['package.json', 'package-lock.json', 'tsconfig.json', 'proxy.ts']) await copyFile(path.join(frontend, file), path.join(project, file));
   const config = await readFile(path.join(frontend, 'next.config.ts'), 'utf8');
-  await writeFile(path.join(project, 'next.config.ts'), config.replace('export default nextConfig;', `nextConfig.turbopack = { ...nextConfig.turbopack, root: ${JSON.stringify(frontend)} };\nexport default nextConfig;`));
+  // Disposable projects never reuse their cache. Avoid native compression memory
+  // pressure while preserving the production app's normal cache configuration.
+  await writeFile(path.join(project, 'next.config.ts'), config.replace('export default nextConfig;', `nextConfig.turbopack = { ...nextConfig.turbopack, root: ${JSON.stringify(frontend)} };\nnextConfig.experimental = { ...nextConfig.experimental, turbopackFileSystemCacheForDev: false };\nexport default nextConfig;`));
   // Preserve the real Tailwind Turbopack loader; Webpack renders this project unstyled.
   let next;
   let retries = 0;
   function launch() {
-    next = spawn(process.execPath, [path.join(frontend, 'node_modules/next/dist/bin/next'), 'dev', '-H', '127.0.0.1', '-p', '3200'], {cwd: project, env: {...process.env, NEXT_TELEMETRY_DISABLED: '1'}, stdio: 'inherit', windowsHide: true});
+    next = spawn(process.execPath, [path.join(frontend, 'node_modules/next/dist/bin/next'), 'dev', '-H', '127.0.0.1', '-p', process.env.E2E_FRONTEND_PORT || '3200'], {cwd: project, env: {...process.env, NEXT_TELEMETRY_DISABLED: '1'}, stdio: 'inherit', windowsHide: true});
     next.once('error', error => {console.error(error); void shutdown(1);});
     next.once('exit', code => {
       // Keep the same project/cache when Next asks for a command retry during

@@ -9,6 +9,7 @@ import { ErpUser } from '@prisma/client';
 import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/bootstrap';
 import { PrismaService } from '../../src/database/prisma.service';
+import { assertDatabaseSchemaReady } from '../../src/database/schema-readiness';
 import { AuthService } from '../../src/auth/auth.service';
 import { DocumentsService } from '../../src/documents/documents.service';
 import { S3StorageService } from '../../src/documents/s3-storage.service';
@@ -90,6 +91,20 @@ describe('PostgreSQL registration workflow (S3 transport and Cognito verificatio
 
   afterAll(async () => {await app?.close(); await database?.stop();});
 
+  it('detects an unapplied registration migration before requests or retention jobs can run', async () => {
+    await assertDatabaseSchemaReady(prisma);
+    await expect(prisma.$transaction(async tx => {
+      await tx.$executeRawUnsafe('ALTER TABLE "Registration" DROP COLUMN "rejectionReasonCode", DROP COLUMN "rejectionExpiresAt"');
+      await expect(assertDatabaseSchemaReady(tx)).rejects.toMatchObject({
+        code: 'DATABASE_SCHEMA_OUTDATED',
+        missing: expect.arrayContaining(['Registration.rejectionReasonCode', 'Registration.rejectionExpiresAt']),
+        message: expect.stringContaining('npm run migrate:deploy'),
+      });
+      throw new Error('Roll back the schema regression fixture');
+    })).rejects.toThrow('Roll back the schema regression fixture');
+    await assertDatabaseSchemaReady(prisma);
+  });
+
   it('stores each form in its own tables with private-prefix document metadata and audit events', async () => {
     const customerResult = await submit('customers', customer(), ['dl1', 'dl2', 'gstCertificate', 'shopOutside', 'shopInside']).expect(201);
     const companyResult = await submit('companies', company(), ['companyLogo', 'adminPhoto'], true).expect(201);
@@ -112,6 +127,129 @@ describe('PostgreSQL registration workflow (S3 transport and Cognito verificatio
     expect(await prisma.auditEvent.count({where: {action: 'REGISTRATION_SUBMITTED'}})).toBe(3);
     expect(await prisma.uploadBatch.count({where: {completedAt: null}})).toBe(0);
     expect(JSON.stringify(await prisma.registration.findMany())).not.toContain(password);
+  });
+
+  it('shares the registration submission sequence across all three forms and keeps pending profiles without master codes', async () => {
+    const customerResult = await submit('customers', customer(), ['dl1', 'dl2', 'gstCertificate', 'shopOutside', 'shopInside']).expect(201);
+    const patientResult = await submit('patients', patient()).expect(201);
+    const companyResult = await submit('companies', company(), ['companyLogo', 'adminPhoto'], true).expect(201);
+    const serial = (id: string) => BigInt(id.match(/ZI(\d+)$/)![1]);
+    expect(customerResult.body.registrationId).toMatch(/^REG-CUS-ZI\d{4,}$/);
+    expect(patientResult.body.registrationId).toMatch(/^REG-PAT-ZI\d{4,}$/);
+    expect(companyResult.body.registrationId).toMatch(/^REG-COM-ZI\d{4,}$/);
+    expect(serial(patientResult.body.registrationId)).toBe(serial(customerResult.body.registrationId) + 1n);
+    expect(serial(companyResult.body.registrationId)).toBe(serial(patientResult.body.registrationId) + 1n);
+    const saved = await prisma.registration.findMany();
+    expect(saved).toHaveLength(3);
+    expect(saved.every(row => row.masterCode === null && row.ownerId === null && row.status === 'PENDING')).toBe(true);
+  });
+
+  it('assigns unique submission identifiers to concurrent distinct registrations', async () => {
+    const responses = await Promise.all(Array.from({length: 6}, (_, index) => submit('patients', patient(`98765432${String(index).padStart(2, '0')}`))));
+    expect(responses.every(response => response.status === 201)).toBe(true);
+    const ids = responses.map(response => response.body.registrationId as string);
+    expect(new Set(ids).size).toBe(6);
+    expect(ids.every(id => /^REG-PAT-ZI\d{4,}$/.test(id))).toBe(true);
+    expect(await prisma.patientRegistration.count()).toBe(6);
+  });
+
+  it('retains legacy UUID registration links and document references while assigning new readable identifiers', async () => {
+    const legacyId = 'REG-PAT-9a913fa6-c00d-46a9-8962-9fdf2ca40e5e';
+    await prisma.registration.create({data: {id: legacyId, kind: 'patient', mobile: '9876543299', requestHash: 'legacy-fixture', patient: {create: {patientName: 'Legacy Patient', address: 'Legacy Address', paymentMethod: 'UPI'}}}});
+    const created = await submit('patients', patient()).expect(201);
+    expect(created.body.registrationId).toMatch(/^REG-PAT-ZI\d{4,}$/);
+    const detail = await request(app.getHttpServer()).get(`/api/admin/registrations/${legacyId}`).set('Authorization', 'Bearer integration-admin').expect(200);
+    expect(detail.body.record).toMatchObject({id: legacyId, patientName: 'Legacy Patient', status: 'PENDING'});
+    expect(await prisma.registration.count()).toBe(2);
+  });
+
+  it('approves each kind in approval order with one persistent code, owner, profile and notification', async () => {
+    const customerResult = await submit('customers', customer(), ['dl1', 'dl2', 'gstCertificate', 'shopOutside', 'shopInside']).expect(201);
+    const patientResult = await submit('patients', patient()).expect(201);
+    const companyResult = await submit('companies', company(), ['companyLogo', 'adminPhoto'], true).expect(201);
+    const ordered = [companyResult, customerResult, patientResult];
+    const codes: string[] = [];
+    for (const created of ordered) {
+      const id = created.body.registrationId as string;
+      const approved = await request(app.getHttpServer()).post(`/api/admin/registrations/${id}/decision`).set('Authorization', 'Bearer integration-admin').send({action: 'approve'}).expect(201);
+      expect(approved.body).toMatchObject({status: 'APPROVED', activationPending: false, masterCode: expect.stringMatching(/^ZI\d{4,}$/)});
+      codes.push(approved.body.masterCode);
+      const saved = await prisma.registration.findUniqueOrThrow({where: {id}, include: {owner: true, customer: true, patient: true, company: true, documents: true}});
+      expect(saved).toMatchObject({id, status: 'APPROVED', masterCode: approved.body.masterCode, decidedById: admin.id, decidedAt: expect.any(Date)});
+      expect(saved.owner).toMatchObject({username: saved.masterCode, role: saved.kind.toUpperCase(), state: 'ACTIVE'});
+      expect(saved[saved.kind]).not.toBeNull();
+      const approvedList = await request(app.getHttpServer()).get(`/api/admin/registrations/approved?kind=${saved.kind}`).set('Authorization', 'Bearer integration-admin').expect(200);
+      expect(approvedList.body.items).toEqual(expect.arrayContaining([expect.objectContaining({id, masterCode: saved.masterCode, accountStatus: 'active'})]));
+      const detail = await request(app.getHttpServer()).get(`/api/admin/registrations/${id}`).set('Authorization', 'Bearer integration-admin').expect(200);
+      expect(detail.body.record.masterCode).toBe(saved.masterCode);
+      expect(JSON.stringify(detail.body)).not.toMatch(/password|scrypt|requestHash|idempotencyKey/);
+      expect(await prisma.registrationNotification.count({where: {registrationId: id, event: 'APPROVED'}})).toBe(1);
+      const repeat = await request(app.getHttpServer()).post(`/api/admin/registrations/${id}/decision`).set('Authorization', 'Bearer integration-admin').send({action: 'approve'}).expect(201);
+      expect(repeat.body.masterCode).toBe(saved.masterCode);
+      expect(await prisma.auditEvent.count({where: {registrationId: id, action: 'REGISTRATION_APPROVED'}})).toBe(1);
+    }
+    expect(BigInt(codes[1].slice(2))).toBe(BigInt(codes[0].slice(2)) + 1n);
+    expect(BigInt(codes[2].slice(2))).toBe(BigInt(codes[1].slice(2)) + 1n);
+    expect(new Set(codes).size).toBe(3);
+    expect(await prisma.erpUser.count()).toBe(5);
+    expect(await prisma.customerRegistration.count()).toBe(1);
+    expect(await prisma.patientRegistration.count()).toBe(1);
+    expect(await prisma.companyRegistration.count()).toBe(1);
+    expect(await prisma.document.count()).toBe(7);
+  });
+
+  it('serializes simultaneous approval retries into exactly one master account', async () => {
+    const created = await submit('patients', patient()).expect(201);
+    const path = `/api/admin/registrations/${created.body.registrationId}/decision`;
+    const responses = await Promise.all(Array.from({length: 6}, () => request(app.getHttpServer()).post(path).set('Authorization', 'Bearer integration-admin').send({action: 'approve'})));
+    expect(responses.every(response => response.status === 201)).toBe(true);
+    expect(new Set(responses.map(response => response.body.masterCode)).size).toBe(1);
+    expect(await prisma.erpUser.count({where: {role: 'PATIENT'}})).toBe(2);
+    expect(await prisma.registrationNotification.count()).toBe(1);
+    expect(await prisma.auditEvent.count({where: {action: 'REGISTRATION_APPROVED'}})).toBe(1);
+  });
+
+  it('assigns distinct master codes to simultaneous approvals and enforces database uniqueness', async () => {
+    const registrations = [];
+    for (let index = 0; index < 4; index++) registrations.push(await submit('patients', patient(`987654328${index}`)).expect(201));
+    const responses = await Promise.all(registrations.map(created => request(app.getHttpServer()).post(`/api/admin/registrations/${created.body.registrationId}/decision`).set('Authorization', 'Bearer integration-admin').send({action: 'approve'})));
+    expect(responses.every(response => response.status === 201)).toBe(true);
+    const codes = responses.map(response => response.body.masterCode as string);
+    expect(new Set(codes).size).toBe(4);
+    const serials = codes.map(code => BigInt(code.slice(2))).sort((a, b) => a < b ? -1 : 1);
+    expect(serials[3] - serials[0]).toBe(3n);
+    await expect(prisma.registration.update({where: {id: registrations[1].body.registrationId}, data: {masterCode: codes[0]}})).rejects.toMatchObject({code: 'P2002'});
+    expect(await prisma.erpUser.count({where: {role: 'PATIENT'}})).toBe(5);
+    expect(await prisma.registrationNotification.count()).toBe(4);
+  });
+
+  it('rejects pending registrations without allocating a master or owner and preserves conflicting decision behavior', async () => {
+    const created = await submit('patients', patient()).expect(201);
+    const path = `/api/admin/registrations/${created.body.registrationId}/decision`;
+    await request(app.getHttpServer()).post(path).set('Authorization', 'Bearer integration-admin').send({action: 'reject', reasonCode: 'OTHER', reasonReviewed: true, reason: 'Documents require correction'}).expect(201);
+    const saved = await prisma.registration.findUniqueOrThrow({where: {id: created.body.registrationId}});
+    expect(saved).toMatchObject({status: 'REJECTED', masterCode: null, ownerId: null, decidedById: admin.id, decidedAt: expect.any(Date)});
+    await request(app.getHttpServer()).post(path).set('Authorization', 'Bearer integration-admin').send({action: 'approve'}).expect(409);
+    await request(app.getHttpServer()).post(path).set('Authorization', 'Bearer integration-admin').send({action: 'reject', reasonCode: 'OTHER', reasonReviewed: true, reason: 'Documents require correction'}).expect(201);
+    expect(await prisma.erpUser.count()).toBe(2);
+  });
+
+  it('rolls back status, master code, account and notification when approval persistence fails', async () => {
+    const created = await submit('patients', patient()).expect(201);
+    await prisma.$executeRawUnsafe('CREATE OR REPLACE FUNCTION integration_reject_master() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."masterCode" IS NOT NULL THEN RAISE EXCEPTION \'forced master write failure\'; END IF; RETURN NEW; END; $$');
+    await prisma.$executeRawUnsafe('CREATE TRIGGER integration_reject_master BEFORE UPDATE ON "Registration" FOR EACH ROW EXECUTE FUNCTION integration_reject_master()');
+    try {
+      const result = await request(app.getHttpServer()).post(`/api/admin/registrations/${created.body.registrationId}/decision`).set('Authorization', 'Bearer integration-admin').send({action: 'approve'});
+      expect(result.status).toBeGreaterThanOrEqual(500);
+      const saved = await prisma.registration.findUniqueOrThrow({where: {id: created.body.registrationId}});
+      expect(saved).toMatchObject({status: 'PENDING', masterCode: null, ownerId: null, decidedAt: null, decidedById: null});
+      expect(await prisma.erpUser.count()).toBe(2);
+      expect(await prisma.registrationNotification.count()).toBe(0);
+      expect(await prisma.auditEvent.count({where: {action: 'REGISTRATION_APPROVED'}})).toBe(0);
+    } finally {
+      await prisma.$executeRawUnsafe('DROP TRIGGER integration_reject_master ON "Registration"');
+      await prisma.$executeRawUnsafe('DROP FUNCTION integration_reject_master()');
+    }
   });
 
   it('rejects missing fields, unsupported contents, wrong file slots, required company images and unknown scalar fields before persistence', async () => {

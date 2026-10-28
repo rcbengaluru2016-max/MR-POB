@@ -1,0 +1,2 @@
+ALTER TABLE "ImportJob" ADD COLUMN "supportingFileName" VARCHAR(200);
+ALTER TABLE "ImportJob" ADD COLUMN "warnings" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

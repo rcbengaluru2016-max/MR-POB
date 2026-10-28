@@ -1,15 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { RegistrationDocumentPreview } from "@/components/super-admin/registration-document-preview";
 import { useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { cn, formatDateTime } from "@/lib/utils";
 import { CREDIT_DAY_OPTIONS, PAYMENT_MODES } from "@/lib/constants";
 import { VerificationPage } from "@/components/admin/verification-page";
+import { notificationLabel, notificationWasSent } from "@/lib/notification-status";
 
 type Kind = "customer" | "company" | "patient";
 type SafeDetails = {
   activationPending?: boolean;
+  notificationStatus?: string;
   registration: Record<string, unknown> & { id: string; kind: Kind; status: string; submittedAt: string; files?: Record<string, { name: string; type: string; size: number; dataUrl: string; downloadUrl?: string }> };
   master: Record<string, unknown> & { code: string; status: string; createdAt: string; approvalDate: string };
   account: null | { username: string; displayName: string; email?: string; userType: string; status: string; createdAt: string; lastLoginAt?: string };
@@ -21,6 +24,8 @@ type OptionLists = { representatives: Option[] };
 
 const emptyOptions: OptionLists = { representatives: [] };
 const erpInputClass = "h-10 w-full rounded-lg border border-line bg-background px-3 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-100";
+
+const importFields: [string, string][] = [["masterCode", "Master Code"], ["registrationSource", "Registration Source"], ["importedBy", "Imported By"], ["importedAt", "Imported At"]];
 
 const recordFields: Record<Kind, [string, string][]> = {
   customer: [
@@ -197,6 +202,7 @@ export function ApprovedRegistrationDetails({ kind, id, basePath = "/super-admin
   if (data.activationPending) return <div className="space-y-4"><p className="rounded-xl border border-line bg-panel p-4 text-sm">Registration approved. Master creation and account activation are pending.</p><VerificationPage expectedKind={kind} superAdminFlow returnPath={`${basePath}/registrations/${kind}`} /></div>;
 
   const { registration, master, account, activationMessage } = data;
+  const messageSent = notificationWasSent(data.notificationStatus ?? activationMessage?.status);
   const form = erpForm ?? initialErpForm(master);
   const files = registration.files ?? {};
   const timeLabels = [
@@ -205,7 +211,7 @@ export function ApprovedRegistrationDetails({ kind, id, basePath = "/super-admin
     formatDateTime(typeof registration.decidedAt === "string" ? registration.decidedAt : master.approvalDate),
     formatDateTime(master.createdAt),
     account ? formatDateTime(account.createdAt) : "Not available",
-    activationMessage ? formatDateTime(activationMessage.sentAt) : "Not sent",
+    messageSent && activationMessage ? formatDateTime(activationMessage.sentAt) : notificationLabel(data.notificationStatus),
   ];
 
   return (
@@ -217,19 +223,20 @@ export function ApprovedRegistrationDetails({ kind, id, basePath = "/super-admin
         <span className="font-mono text-sm font-semibold text-foreground">{master.code}</span>
         {account ? <><span aria-hidden="true" className="text-muted">-</span><span className={`rounded-full px-3 py-1 text-xs font-semibold ${accountIsActive(account.status) ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{accountIsActive(account.status) ? "Active" : "Inactive"}</span></> : null}
       </header>
+      <p className="text-sm text-muted">Registration ID: <span className="font-mono">{registration.id}</span></p>
 
       <section aria-label="Registration progress" className="overflow-x-auto rounded-2xl border border-line bg-white px-4 py-5 shadow-sm sm:px-6">
         <ol className="grid min-w-[680px] grid-cols-6">
           {progressSteps.map((step, index) => {
-            const isMessageMissing = index === 5 && !activationMessage;
-            const complete = !isMessageMissing;
+            const isMessageMissing = index === 5 && !messageSent;
+            const complete = index === 4 ? Boolean(account && accountIsActive(account.status)) : !isMessageMissing;
             return (
               <li key={step} className="relative flex flex-col items-center px-1 text-center">
-                {index < progressSteps.length - 1 ? <span aria-hidden="true" className={cn("absolute left-1/2 top-4 h-[3px] w-full", activationMessage || index < progressSteps.length - 2 ? "bg-emerald-700" : "bg-slate-200")} /> : null}
+                {index < progressSteps.length - 1 ? <span aria-hidden="true" className={cn("absolute left-1/2 top-4 h-[3px] w-full", messageSent || index < progressSteps.length - 2 ? "bg-emerald-700" : "bg-slate-200")} /> : null}
                 <span className={cn("relative z-10 inline-flex size-8 items-center justify-center rounded-full border-2 text-xs font-bold", complete ? "border-emerald-700 bg-emerald-700 text-white" : "border-slate-200 bg-white text-muted")}>
                   {complete ? "✓" : index + 1}
                 </span>
-                <span className={cn("mt-2 max-w-28 text-[11px] leading-4 sm:text-xs", complete ? "font-medium text-foreground" : "text-muted")}>{isMessageMissing ? "Message Not Sent" : step}</span>
+                <span className={cn("mt-2 max-w-28 text-[11px] leading-4 sm:text-xs", complete ? "font-medium text-foreground" : "text-muted")}>{index === 5 ? notificationLabel(data.notificationStatus) : step}</span>
                 {timeLabels[index] ? <span className="mt-1 text-[10px] text-muted">{timeLabels[index]}</span> : null}
               </li>
             );
@@ -241,7 +248,7 @@ export function ApprovedRegistrationDetails({ kind, id, basePath = "/super-admin
         <div className="inline-flex rounded-md bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-brand">Details</div>
         <h2 className="sr-only">Registration information</h2>
         <dl className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-          {recordFields[kind].filter(([key]) => registration[key] !== undefined && registration[key] !== "" && !(key === "address" && registration.addressLine1)).map(([key, label]) => (
+          {[...importFields, ...recordFields[kind]].filter(([key]) => registration[key] !== undefined && registration[key] !== "" && !(key === "address" && registration.addressLine1)).map(([key, label]) => (
             <div key={key} className="min-w-0"><dt className="text-xs font-medium text-muted">{label}</dt><dd className="mt-1 break-words text-sm font-semibold text-foreground">{display(registration[key])}</dd></div>
           ))}
         </dl>
@@ -249,7 +256,7 @@ export function ApprovedRegistrationDetails({ kind, id, basePath = "/super-admin
         <div className="mt-6 border-t border-line pt-5">
           <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold text-foreground">Documents</h2><span className="text-xs text-muted">{Object.keys(files).length} uploaded</span></div>
           {Object.keys(files).length ? <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {Object.entries(files).map(([key, file]) => <div key={key} className="rounded-xl border border-dashed border-line bg-background p-3 text-center"><a href={file.dataUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-brand"><span className="block text-sm font-medium">{documentLabels[key] ?? `View ${key}`}</span><span className="mt-1 block text-xs text-muted">{file.name}</span><span className="mt-1 block text-xs font-semibold text-brand">Preview ↗</span></a><a href={file.downloadUrl ?? file.dataUrl} download target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs text-brand underline" aria-label={`Download ${file.name}`}>Download</a></div>)}
+            {Object.entries(files).map(([key, file]) => <div key={key} className="rounded-xl border border-dashed border-line bg-background p-3 text-center"><a href={file.dataUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-brand"><span className="block text-sm font-medium">{documentLabels[key] ?? `View ${key}`}</span><span className="mt-1 block text-xs text-muted">{file.name}</span><span className="mt-1 block text-xs font-semibold text-brand">Open preview ↗</span></a><RegistrationDocumentPreview url={file.dataUrl} type={file.type} name={file.name} /><a href={file.downloadUrl ?? file.dataUrl} download target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs text-brand underline" aria-label={`Download ${file.name}`}>Download</a></div>)}
           </div> : <p className="mt-3 text-sm text-muted">No documents were uploaded.</p>}
           {kind === "customer" && !files.gstCertificate ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">GST Certificate Upload * — required document not present.</p> : null}
         </div>
@@ -293,12 +300,12 @@ export function ApprovedRegistrationDetails({ kind, id, basePath = "/super-admin
 
         <section className="rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-6">
           <h2 className="text-base font-semibold text-foreground">Account Activation Message</h2>
-          {activationMessage ? <div className="mt-3 rounded-xl border border-line bg-background p-4">
+          {messageSent && activationMessage ? <div className="mt-3 rounded-xl border border-line bg-background p-4">
             <dl className="grid gap-3 sm:grid-cols-2"><div><dt className="text-xs text-muted">Registered mobile number</dt><dd className="mt-1 break-all text-sm font-medium text-foreground">{activationMessage.recipient}</dd></div><div><dt className="text-xs text-muted">Status</dt><dd className="mt-1"><span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-bold uppercase text-emerald-700">{activationMessage.status} ✓</span></dd></div></dl>
             <ul className="mt-4 list-disc space-y-1 pl-4 text-sm text-foreground"><li>Account activated</li><li>Master Code and username</li><li>Login link and instructions</li><li>Password recovery instructions</li></ul>
             <p className="mt-2 text-xs text-muted">The password is never included.</p>
             <p className="mt-2 text-[11px] text-muted">Sent {formatDateTime(activationMessage.sentAt)}</p>
-          </div> : <div className="mt-3 rounded-xl border border-dashed border-line bg-background p-4"><span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold uppercase text-muted">Not sent</span><p className="mt-3 text-sm text-muted">No WhatsApp activation message has been sent. WhatsApp delivery is not configured.</p></div>}
+          </div> : <div className="mt-3 rounded-xl border border-dashed border-line bg-background p-4"><span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold uppercase text-muted">{notificationLabel(data.notificationStatus)}</span><p className="mt-3 text-sm text-muted">{messageSent ? "The WhatsApp provider confirmed the notification status shown above." : "Approval and Master Code are saved. The notification remains pending until WhatsApp delivery is configured and confirmed."}</p></div>}
         </section>
       </div>
       <ConfirmDialog

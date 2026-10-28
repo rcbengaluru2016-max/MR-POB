@@ -5,7 +5,7 @@ import Link from "next/link";
 import { formatDateTime } from "@/lib/utils";
 
 type Kind = "customer" | "company" | "patient";
-type Item = { id: string; kind: Kind; accountStatus: "active" | "inactive"; submittedAt: string; name: string; email: string };
+type Item = { id: string; masterCode?: string; kind: Kind; accountStatus: "active" | "inactive"; submittedAt: string; name: string; email: string };
 type SortKey = "id" | "name" | "email" | "submittedAt" | "accountStatus";
 const pageSize = 10;
 
@@ -37,7 +37,7 @@ export function SuperAdminRegistrationTable({ kind, basePath = "/super-admin" }:
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return items
-      .filter((item) => !query || [item.id, item.name, item.email].some((value) => value.toLowerCase().includes(query)))
+      .filter((item) => !query || [item.id, item.masterCode ?? "", item.name, item.email].some((value) => value.toLowerCase().includes(query)))
       .sort((left, right) => {
         const a = left[sortKey].toLowerCase();
         const b = right[sortKey].toLowerCase();
@@ -74,7 +74,7 @@ export function SuperAdminRegistrationTable({ kind, basePath = "/super-admin" }:
           </tr></thead>
           <tbody>
             {visible.map((item) => <tr key={item.id} className="border-t border-line">
-              <td className="px-3 py-2.5 font-medium">{item.name}</td><td className="max-w-64 truncate px-3 py-2.5" title={item.email}>{item.email || "—"}</td><td className="whitespace-nowrap px-3 py-2.5">{formatDateTime(item.submittedAt)}</td><td className="px-3 py-2.5"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${item.accountStatus === "active" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{item.accountStatus === "active" ? "Active" : "Inactive"}</span></td><td className="px-3 py-2.5"><Link href={`${basePath}/registrations/${kind}/${encodeURIComponent(item.id)}`} className="inline-flex min-h-8 items-center rounded-lg border border-line px-3 text-xs font-semibold text-foreground hover:border-brand hover:text-brand">View</Link></td>
+              <td className="px-3 py-2.5 font-medium">{item.name}<span className="mt-1 block font-mono text-xs text-muted">{item.id}</span>{item.masterCode ? <span className="mt-1 block font-mono text-xs text-brand">Master Code: {item.masterCode}</span> : null}</td><td className="max-w-64 truncate px-3 py-2.5" title={item.email}>{item.email || "—"}</td><td className="whitespace-nowrap px-3 py-2.5">{formatDateTime(item.submittedAt)}</td><td className="px-3 py-2.5"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${item.accountStatus === "active" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{item.accountStatus === "active" ? "Active" : "Inactive"}</span></td><td className="px-3 py-2.5"><Link href={`${basePath}/registrations/${kind}/${encodeURIComponent(item.id)}`} className="inline-flex min-h-8 items-center rounded-lg border border-line px-3 text-xs font-semibold text-foreground hover:border-brand hover:text-brand">View</Link></td>
             </tr>)}
             {loading ? <tr><td className="px-4 py-8 text-center text-muted" colSpan={5}>Loading registrations…</td></tr> : null}
             {!loading && !error && visible.length === 0 ? <tr><td className="px-4 py-8 text-center text-muted" colSpan={5}>{search ? "No accounts match your search." : "No approved accounts are available yet."}</td></tr> : null}

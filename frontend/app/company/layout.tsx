@@ -10,8 +10,8 @@ export default function CompanyLayout({ children }: { children: ReactNode }) {
 }
 
 async function AuthenticatedCompanyShell({ children }: { children: ReactNode }) {
-  const { account } = await getCompanyAdminContext();
-  return <CompanyAdminShell accountName={account.displayName}>{children}</CompanyAdminShell>;
+  const { account, master } = await getCompanyAdminContext();
+  return <CompanyAdminShell accountName={account.displayName} masterCode={master.code}>{children}</CompanyAdminShell>;
 }
 
 function CompanyWorkspaceLoading() {
